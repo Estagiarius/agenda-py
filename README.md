@@ -1,43 +1,58 @@
-# agenda-pessoal
-Uma agenda pessoal, construida para você.
+# TeacherAgenda
+
+TeacherAgenda is a personal organization tool for teachers, built with Python and PyQt6. It helps teachers manage their schedules, tasks, and student information efficiently.
 
 ## Features
 
-### Personal Journal & Calendar
-(Assuming any existing content for these features should be preserved above this new section)
+*   **Personal Journal & Calendar**: Keep track of daily notes, appointments, and important dates.
+*   **Intelligent Question Bank**: Create, store, categorize, and filter questions for various subjects and difficulty levels.
+*   **Taking Quizzes**: Generate quizzes from the question bank to test knowledge.
 
-### Intelligent Question Bank
-The application now includes an Intelligent Question Bank feature. This allows users to:
-*   **Create Questions**: Add new questions with text, subject, difficulty level, multiple-choice options (optional), and an answer.
-*   **Store Questions**: Questions are stored within the application (currently in-browser memory).
-*   **Categorize Questions**: Each question is categorized by subject and difficulty.
-*   **Filter Questions**: Users can filter the displayed questions by subject and/or difficulty.
+## Setting up the Development Environment
 
-**How to Access the Question Bank:**
-1.  Open `index.html` in your browser.
-2.  Click on the "Question Bank" link in the navigation bar.
+### Prerequisites
 
-**Testing:**
-Unit tests for the question management logic can be run by opening `tests/test-runner.html` in a browser.
+*   Python 3.10 or higher.
 
-#### Taking Quizzes
-The application now allows you to test your knowledge by taking quizzes generated from the questions stored in the Question Bank.
+### Installation
 
-**How to Take a Quiz:**
-1.  Navigate to the "Take a Quiz" section using the link in the navigation bar.
-2.  **Configure Your Quiz:**
-    *   Specify the desired number of questions.
-    *   Optionally, filter questions by a specific subject.
-    *   Optionally, filter questions by difficulty level (Easy, Medium, Hard).
-3.  Click "Start Quiz."
-4.  **Answering Questions:**
-    *   The quiz will present one question at a time.
-    *   For multiple-choice questions, select your answer using the radio buttons.
-    *   Navigate using "Next Question" and "Previous Question" buttons.
-5.  **Submitting and Viewing Results:**
-    *   Click "Submit Quiz" on the last question or when you're ready.
-    *   Your score (total correct and percentage) will be displayed.
-    *   A detailed review allows you to see each question, your answer, and the correct answer, highlighting correct/incorrect responses.
-6.  From the results page, you can choose to "Take Another Quiz" (which resets the current quiz state and takes you to the configuration screen) or go "Back to Question Bank."
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/your-username/TeacherAgenda.git
+    cd TeacherAgenda
+    ```
+2.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-**Note:** Quizzes are currently generated from the questions available in the in-browser session. Adding questions to the Question Bank will make them available for future quizzes.
+## Running the Application from Source
+
+To run the application directly from the source code:
+
+```bash
+python src/main.py
+```
+
+## Building the Application for Linux
+
+A script is provided to build a standalone executable for Linux.
+
+1.  Make the build script executable:
+    ```bash
+    chmod +x build_linux.sh
+    ```
+2.  Run the build script:
+    ```bash
+    ./build_linux.sh
+    ```
+    This will create a standalone executable file in the `dist/` directory.
+
+## Running the Packaged Application
+
+After building the application, navigate to the output directory and run the executable:
+
+```bash
+cd dist/TeacherAgenda
+./TeacherAgenda
+```

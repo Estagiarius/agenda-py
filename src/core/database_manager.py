@@ -763,6 +763,33 @@ class DatabaseManager:
             if self.conn: self.conn.rollback()
             return None
 
+    def get_quiz_config_by_id(self, config_id: int) -> Optional[QuizConfig]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT id, name, question_ids, created_at FROM QuizConfigs WHERE id = ?"
+            cursor.execute(query, (config_id,))
+            row = cursor.fetchone()
+            return self._quiz_config_from_row(row) # Uses the first _quiz_config_from_row
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar QuizConfig por ID: {e}")
+            return None
+            
+    def get_all_quiz_configs(self) -> List[QuizConfig]:
+        if not self.conn: return [] # Corrected return type for connection failure
+        configs: List[QuizConfig] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT id, name, question_ids, created_at FROM QuizConfigs ORDER BY created_at DESC"
+            cursor.execute(query)
+            for row in cursor.fetchall():
+                config = self._quiz_config_from_row(row) # Uses the first _quiz_config_from_row
+                if config:
+                    configs.append(config)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar todas as QuizConfigs: {e}")
+        return configs
+
     # --- CRUD para Entities ---
     def _entity_from_row(self, row: sqlite3.Row) -> Optional[Entity]:
         if not row: return None
@@ -808,15 +835,15 @@ class DatabaseManager:
             row = cursor.fetchone()
             return self._entity_from_row(row)
         except sqlite3.Error as e:
-            print(f"Erro ao buscar QuizConfig por ID: {e}")
+            print(f"Erro ao buscar Entity por ID: {e}")
             return None
             
-    def get_all_quiz_configs(self) -> List[QuizConfig]:
-        if not self.conn: return None # Correção: deveria ser None, não [] se a conexão falhar
+    def get_all_entities(self, entity_type: Optional[str] = None) -> List[Entity]: # Renamed and added entity_type
+        if not self.conn: return []
         try:
             cursor = self.conn.cursor()
             query = "SELECT * FROM Entities"
-            params = []
+            params: List[Any] = [] # Ensure params is defined
             if entity_type:
                 query += " WHERE type = ?"
                 params.append(entity_type)
@@ -831,7 +858,7 @@ class DatabaseManager:
             return entities
         except sqlite3.Error as e:
             print(f"Erro ao buscar todas as Entities: {e}")
-            return [] # Retorna lista vazia em caso de erro na query
+            return []
 
     def update_entity(self, entity: Entity) -> bool:
         if not self.conn or entity.id is None: return False
@@ -915,10 +942,14 @@ class DatabaseManager:
         return linked_entities
 
 
-    # --- CRUD para QuizConfig ---
-    def _quiz_config_from_row(self, row: sqlite3.Row) -> Optional[QuizConfig]:
+    # The duplicated QuizConfig methods that were here are now removed.
+    # The correct get_quiz_config_by_id and get_all_quiz_configs have been inserted earlier,
+    # after the first (and correct) add_quiz_config method.
+
+    # --- CRUD para QuizAttempt ---
+    def _quiz_attempt_from_row(self, row: sqlite3.Row) -> Optional[QuizAttempt]:
         if not row: return None
-        question_ids_json = row['question_ids']
+        user_answers_json = row['user_answers']
         question_ids_list: List[int] = []
         try:
             question_ids_list = json.loads(question_ids_json)
@@ -937,57 +968,12 @@ class DatabaseManager:
             # updated_at não está no modelo QuizConfig, mas o trigger o atualiza no DB
         )
 
-    def add_quiz_config(self, quiz_config: QuizConfig) -> Optional[QuizConfig]:
-        if not self.conn: return None
-        try:
-            cursor = self.conn.cursor()
-            question_ids_json = json.dumps(quiz_config.question_ids)
-            query = "INSERT INTO QuizConfigs (name, question_ids) VALUES (?, ?)"
-            cursor.execute(query, (quiz_config.name, question_ids_json))
-            self.conn.commit()
-            quiz_config.id = cursor.lastrowid
-            if quiz_config.id:
-                # Buscar para obter created_at e garantir consistência
-                return self.get_quiz_config_by_id(quiz_config.id)
-            return None
-        except sqlite3.Error as e:
-            print(f"Erro ao adicionar QuizConfig: {e}")
-            if self.conn: self.conn.rollback()
-            return None
-
-    def get_quiz_config_by_id(self, config_id: int) -> Optional[QuizConfig]:
-        if not self.conn: return None
-        try:
-            cursor = self.conn.cursor()
-            query = "SELECT id, name, question_ids, created_at FROM QuizConfigs WHERE id = ?"
-            # Não selecionamos updated_at pois não está no modelo QuizConfig
-            cursor.execute(query, (config_id,))
-            row = cursor.fetchone()
-            return self._quiz_config_from_row(row)
-        except sqlite3.Error as e:
-            print(f"Erro ao buscar QuizConfig por ID: {e}")
-            return None
-            
-    def get_all_quiz_configs(self) -> List[QuizConfig]:
-        if not self.conn: return []
-        configs: List[QuizConfig] = []
-        try:
-            cursor = self.conn.cursor()
-            # Não selecionamos updated_at pois não está no modelo QuizConfig
-            query = "SELECT id, name, question_ids, created_at FROM QuizConfigs ORDER BY created_at DESC"
-            cursor.execute(query)
-            for row in cursor.fetchall():
-                config = self._quiz_config_from_row(row)
-                if config:
-                    configs.append(config)
-        except sqlite3.Error as e:
-            print(f"Erro ao buscar todas as QuizConfigs: {e}")
-        return configs
-
-    # --- CRUD para QuizAttempt ---
-    def _quiz_attempt_from_row(self, row: sqlite3.Row) -> Optional[QuizAttempt]:
-        if not row: return None
-        user_answers_json = row['user_answers']
+    # add_quiz_config, get_quiz_config_by_id, get_all_quiz_configs were moved up
+    # to replace the duplicated _quiz_config_from_row and its associated methods.
+    # This SEARCH block is now targeting the content that was originally after
+    # the second (now deleted) _quiz_config_from_row.
+    # The new content for these methods is already in the REPLACE block above.
+    # This effectively deletes the duplicated methods that were here.
         user_answers_dict: Dict[int, str] = {}
         try:
             # As chaves no JSON são strings, converter para int
@@ -1071,35 +1057,71 @@ class DatabaseManager:
         return attempts
         
     def add_sample_data(self):
-        """Adiciona um evento de exemplo, uma tarefa associada e perguntas de exemplo para testes."""
+        """Adiciona dados de exemplo: um evento, uma tarefa e algumas perguntas."""
         if not self.conn:
-                "title": "Reunião de Planejamento",
-                "description": "Discutir os próximos passos do projeto.",
-                "start_time": datetime.now().replace(hour=10, minute=0, second=0, microsecond=0),
-                "end_time": datetime.now().replace(hour=11, minute=30, second=0, microsecond=0),
-                "event_type": "reuniao",
-                "location": "Sala de Conferências 1"
-            }
-            
-            query = """
-            INSERT INTO Events (title, description, start_time, end_time, event_type, location)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """
-            cursor.execute(query, (
-                event_data["title"],
-                event_data["description"],
-                self._datetime_to_str(event_data["start_time"]),
-                self._datetime_to_str(event_data["end_time"]),
-                event_data["event_type"],
-                event_data["location"]
-            ))
-            self.conn.commit()
-            print(f"Evento de exemplo '{event_data['title']}' adicionado para hoje.")
+            print("Conexão com o banco de dados não estabelecida. Dados de exemplo não adicionados.")
+            return
 
-        except sqlite3.Error as e:
-            print(f"Erro ao adicionar evento de exemplo: {e}")
-            if self.conn:
-                self.conn.rollback()
+        # Adicionar evento e tarefa de exemplo
+        self._add_sample_event_and_task()
+
+        # Adicionar perguntas de exemplo
+        sample_questions_data = [
+            {
+                "text": "Qual é a capital da França?",
+                "subject": "Geografia",
+                "difficulty": "Fácil",
+                "options": ["Londres", "Berlim", "Paris", "Madri"],
+                "answer": "Paris"
+            },
+            {
+                "text": "Quem escreveu 'Dom Quixote'?",
+                "subject": "Literatura",
+                "difficulty": "Médio",
+                "options": ["Miguel de Cervantes", "William Shakespeare", "Victor Hugo", "Leon Tolstói"],
+                "answer": "Miguel de Cervantes"
+            },
+            {
+                "text": "Qual é a fórmula química da água?",
+                "subject": "Química",
+                "difficulty": "Fácil",
+                "options": ["H2O2", "CO2", "H2O", "NaCl"],
+                "answer": "H2O"
+            },
+            {
+                "text": "Em que ano o homem pisou na Lua pela primeira vez?",
+                "subject": "História",
+                "difficulty": "Difícil",
+                "options": ["1965", "1969", "1972", "1960"],
+                "answer": "1969"
+            }
+        ]
+
+        existing_question_texts = {q.text for q in self.get_all_questions()}
+        questions_added_count = 0
+
+        for q_data in sample_questions_data:
+            if q_data["text"] not in existing_question_texts:
+                question = Question(
+                    text=q_data["text"],
+                    subject=q_data["subject"],
+                    difficulty=q_data["difficulty"],
+                    options=q_data["options"],
+                    answer=q_data["answer"]
+                )
+                added_q = self.add_question(question)
+                if added_q and added_q.id is not None:
+                    print(f"Pergunta de exemplo adicionada: '{added_q.text}'")
+                    questions_added_count += 1
+                else:
+                    print(f"Falha ao adicionar pergunta de exemplo: '{q_data['text']}'")
+            else:
+                print(f"Pergunta de exemplo já existe: '{q_data['text']}'")
+        
+        if questions_added_count > 0:
+            print(f"{questions_added_count} novas perguntas de exemplo foram adicionadas.")
+        else:
+            print("Nenhuma nova pergunta de exemplo foi adicionada (provavelmente já existiam).")
 
     # --- Settings ---
     def get_setting(self, key: str, default_value: Optional[str] = None) -> Optional[str]:

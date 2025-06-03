@@ -49,10 +49,10 @@ a.datas += collect_data_files('PyQt6', include_py_files=True)
 
 # Coletar bibliotecas dinâmicas do PyQt6 (importante para plugins como xcb)
 # Isso pode ser mais eficaz do que apenas --collect-data PyQt6
-# binaries_pyqt = collect_dynamic_libs('PyQt6')
-# if binaries_pyqt:
-#     a.binaries += binaries_pyqt
-#     print(f"INFO: Bibliotecas dinâmicas do PyQt6 coletadas: {binaries_pyqt}")
+binaries_pyqt = collect_dynamic_libs('PyQt6')
+if binaries_pyqt:
+    a.binaries += binaries_pyqt
+    print(f"INFO: Bibliotecas dinâmicas do PyQt6 coletadas: {binaries_pyqt}")
 
 
 # --- Geração do Executável ---

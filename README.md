@@ -28,11 +28,12 @@ TeacherAgenda is a personal organization tool for teachers, built with Python an
 
 ## Running the Application from Source
 
-To run the application directly from the source code:
+To run the application directly from the source code (ensure you are in the project root directory):
 
 ```bash
-python src/main.py
+python3 -m src.main
 ```
+This method is recommended because it tells Python to treat the `src` directory as a package. This helps avoid `ModuleNotFoundError` that can occur with direct script execution (`python src/main.py`) when the application uses relative imports within the `src` package (e.g., `from src.ui.main_window import MainWindow`).
 
 ## Building the Application for Linux
 

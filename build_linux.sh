@@ -80,7 +80,7 @@ echo "Iniciando a construção com PyInstaller..."
 # Por padrão, --onedir é usado.
 # A linha de comando do PyInstaller agora usa o arquivo .spec
 
-$PYTHON_INTERP -m PyInstaller TeacherAgenda.spec --noconfirm --clean
+$PYTHON_INTERP -m PyInstaller TeacherAgenda.spec --noconfirm
 # As opções como --name, --paths, --collect-data, --windowed são gerenciadas dentro do TeacherAgenda.spec
 # A opção --clean aqui garante que o build comece limpo, removendo saídas de builds anteriores.
 # A opção --noconfirm no comando sobrescreve o diretório dist/TeacherAgenda sem perguntar.

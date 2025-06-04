@@ -1,0 +1,14 @@
+# PyInstaller output
+build/
+dist/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# User-specific files (IDE, etc.)
+.vscode/
+.idea/
+*.swp
+*.swo

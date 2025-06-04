@@ -148,8 +148,8 @@ class AgendaView(QWidget):
             self.current_selected_event_id = None # Nenhum evento para selecionar
             self.edit_event_button.setEnabled(False)
             self.delete_event_button.setEnabled(False)
-            self.event_details_area.clear() # Limpa detalhes se não há eventos
-            self.event_details_area.setPlaceholderText("Nenhum evento para esta data. Adicione um novo evento ou selecione outra data.")
+            self._clear_details_labels() # Limpa detalhes se não há eventos
+            # _clear_details_labels() já define um texto padrão/placeholder
         else:
             for event_idx, event_obj in enumerate(events): # Renomeado para evitar conflito com models.Event
                 if event_obj.start_time:
@@ -183,63 +183,68 @@ class AgendaView(QWidget):
     def _on_date_selected(self):
         """Chamado quando a data no calendário é alterada."""
         self.current_selected_event_id = None # Reseta a seleção de evento ao mudar de data
-        self.event_details_area.clear() # Limpa os detalhes ao mudar de data
+        self._clear_details_labels() # Limpa os detalhes ao mudar de data
         self._refresh_event_list_for_selected_date()
         # A seleção do primeiro item na lista (se houver) será tratada por _refresh_event_list...
         # que então chamará _on_event_selected.
 
     def _on_event_selected(self, current_item: Optional[QListWidgetItem], previous_item: Optional[QListWidgetItem]):
-        self.event_details_area.clear()
+        self._clear_details_labels() # Limpa os labels antes de popular ou se não houver item
         if not current_item or current_item.data(Qt.ItemDataRole.UserRole) is None:
             self.current_selected_event_id = None
             self.edit_event_button.setEnabled(False)
             self.delete_event_button.setEnabled(False)
-            self.event_details_area.setPlaceholderText("Selecione um evento para ver os detalhes.")
+            # _clear_details_labels() já define um texto padrão/placeholder.
             return
 
         self.current_selected_event_id = current_item.data(Qt.ItemDataRole.UserRole)
         
-        if self.current_selected_event_id is None: # Checagem adicional
+        if self.current_selected_event_id is None: # Checagem adicional, embora o if acima deva pegar
             self.edit_event_button.setEnabled(False)
             self.delete_event_button.setEnabled(False)
+            # _clear_details_labels() já foi chamado no início.
             return
 
         event_obj = self.db_manager.get_event_by_id(self.current_selected_event_id)
-        self.edit_event_button.setEnabled(True)
-        self.delete_event_button.setEnabled(True)
 
         if event_obj:
-            details_html = f"<h3>{event_obj.title}</h3>"
-            details_html += f"<p><strong>Tipo:</strong> {event_obj.event_type}</p>" # Corrigido para event_obj
+            self.edit_event_button.setEnabled(True)
+            self.delete_event_button.setEnabled(True)
+
+            self.detail_title_label.setText(event_obj.title or "-")
+            self.detail_event_type_label.setText(event_obj.event_type or "-")
             
-            if event_obj.start_time: # Corrigido para event_obj
-                details_html += f"<p><strong>Início:</strong> {event_obj.start_time.strftime('%d/%m/%Y %H:%M')}</p>"
-            if event_obj.end_time: # Corrigido para event_obj
-                details_html += f"<p><strong>Fim:</strong> {event_obj.end_time.strftime('%d/%m/%Y %H:%M')}</p>"
+            start_time_str = event_obj.start_time.strftime('%d/%m/%Y %H:%M') if event_obj.start_time else "-"
+            self.detail_start_time_label.setText(start_time_str)
             
-            if event_obj.description: # Corrigido para event_obj
-                details_html += f"<p><strong>Descrição:</strong><br>{event_obj.description.replace(chr(10), '<br>')}</p>"
-            
-            if event_obj.location: # Corrigido para event_obj
-                details_html += f"<p><strong>Local:</strong> {event_obj.location}</p>"
-            
-            if event_obj.recurrence_rule: # Corrigido para event_obj (e notado que não está no dialog)
-                details_html += f"<p><strong>Recorrência:</strong> {event_obj.recurrence_rule}</p>"
+            end_time_str = event_obj.end_time.strftime('%d/%m/%Y %H:%M') if event_obj.end_time else "-"
+            self.detail_end_time_label.setText(end_time_str)
+
+            self.detail_location_label.setText(event_obj.location or "-")
+            # Para a descrição, usar setTextFormat(Qt.TextFormat.RichText) se quiser manter quebras de linha simples como <br>
+            # ou processar o texto para substituir \n por <br> se o QLabel suportar HTML básico.
+            # Por simplicidade, vamos apenas setar o texto. WordWrap já está ativo.
+            self.detail_description_label.setText(event_obj.description or "-")
 
             # Mostrar entidades vinculadas
             linked_entities = self.db_manager.get_entities_for_event(event_obj.id) # type: ignore
             if linked_entities:
-                details_html += "<p><strong>Participantes/Entidades:</strong><ul>"
+                participants_html = "" # Usar HTML para formatação de lista no QLabel
                 for entity, role in linked_entities:
-                    details_html += f"<li>{entity.name} ({entity.type}) - <i>{role}</i></li>"
-                details_html += "</ul></p>"
+                    participants_html += f"<li>{entity.name} ({entity.type}) - <i>{role}</i></li>"
+                if participants_html: # Adiciona tags de lista se houver itens
+                     self.detail_participants_label.setText(f"<ul>{participants_html}</ul>")
+                else: # Caso raro de lista vazia após a checagem inicial
+                    self.detail_participants_label.setText("Nenhum participante listado.")
+            else:
+                self.detail_participants_label.setText("Nenhum participante listado.")
             
-            self.event_details_area.setHtml(details_html)
+            # Recorrência não está nos labels atuais, mas se estivesse, seria aqui.
+            # Ex: self.detail_recurrence_label.setText(event_obj.recurrence_rule if event_obj.recurrence_rule else "-")
         else:
-            # self.event_details_area.setPlaceholderText(f"Detalhes do evento com ID {event_id} não encontrados.") # event_id não definido aqui
-            self.event_details_area.setPlaceholderText(f"Detalhes do evento com ID {self.current_selected_event_id} não encontrados.")
-            self.edit_event_button.setEnabled(False) # Adicionado para consistência
-            self.delete_event_button.setEnabled(False)# Adicionado para consistência
+            # _clear_details_labels() já foi chamado no início e define placeholders.
+            self.edit_event_button.setEnabled(False)
+            self.delete_event_button.setEnabled(False)
 
 
     def _add_event_dialog(self):
@@ -319,7 +324,7 @@ class AgendaView(QWidget):
             if self.db_manager.delete_event(self.current_selected_event_id):
                 QMessageBox.information(self, "Sucesso", f"Evento '{event_to_delete.title}' excluído.")
                 self.current_selected_event_id = None 
-                self.event_details_area.clear() 
+                self._clear_details_labels()
                 self._refresh_event_list_for_selected_date() 
             else:
                 QMessageBox.critical(self, "Erro", "Falha ao excluir o evento no banco de dados.")

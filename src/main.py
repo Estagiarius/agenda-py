@@ -40,7 +40,7 @@ def main():
             # A aplicação provavelmente falhará se não puder criar/acessar o DB.
     
     # Inicializar o DatabaseManager com o caminho dinâmico
-    db_manager = DatabaseManager(database_path=db_path)
+    db_manager = DatabaseManager(db_path=db_path)
     
     if not db_manager.conn:
         # Não podemos usar QMessageBox aqui antes de QApplication ser totalmente configurado com um tema,

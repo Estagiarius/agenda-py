@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, date
 from typing import List, Optional, Any, Dict
-from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt # Adicionadas
+from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity # Adicionadas
 
 class DatabaseManager:
     def __init__(self, db_path='data/agenda.db'):

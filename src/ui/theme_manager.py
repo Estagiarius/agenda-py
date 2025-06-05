@@ -47,9 +47,13 @@ class ThemeManager:
     QWidget { color: black !important; } /* Broadest rule, attempt to catch all text */
 
     /* Specific overrides where QWidget might be too broad or need refinement */
-    QLabel, QCheckBox, QRadioButton, QGroupBox, QToolTip {
+    QLabel {
         color: black !important;
         background-color: transparent !important; /* Ensure no weird background colors are inherited */
+    }
+    QCheckBox, QRadioButton, QGroupBox, QToolTip {
+        color: black !important;
+        background-color: transparent !important;
     }
     QPushButton {
         color: black !important;
@@ -64,6 +68,16 @@ class ThemeManager:
         color: black !important; /* Ensure selected tab text is also black */
         /* background: #cde8ff !important; Optional: specific selected tab background */
     }
+
+    /* Styles for QListWidget (navigation menu) */
+    QListWidget {
+        font-size: 14px !important; /* Example: Enforce font size if needed */
+        color: black !important;    /* Default text color for the widget itself */
+    }
+    QListWidget::item {
+        color: black !important;    /* Text color for non-selected items */
+    }
+
     QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
         color: black !important;
         background-color: white !important; /* Explicitly set background for input fields */
@@ -104,7 +118,7 @@ class ThemeManager:
         background-color: #0078d7 !important; /* Blue highlight */
         /* color: white !important; */
     }
-    QTableView, QTreeView, QListView {
+    QTableView, QTreeView, QListView { /* Note: QListView is different from QListWidget */
         color: black !important; /* Default text color for items */
         background-color: white !important;
         alternate-background-color: #f0f0f0 !important; /* For alternating row colors if enabled */
@@ -115,6 +129,9 @@ class ThemeManager:
         color: black !important;
         background-color: #e1e1e1 !important;
         border: 1px solid #adadad !important;
+    }
+    QToolButton {
+        color: black !important;
     }
 """
             app.setStyleSheet(stylesheet)

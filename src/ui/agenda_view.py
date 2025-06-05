@@ -2,7 +2,7 @@ import sys
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QCalendarWidget, QListWidget, 
     QListWidgetItem, QTextEdit, QLabel, QSplitter, QPushButton, QMessageBox,
-    QSpacerItem, QSizePolicy, QScrollArea, QFormLayout # Adicionado QScrollArea, QFormLayout
+    QSpacerItem, QSizePolicy, QScrollArea, QFormLayout, QDialog # Adicionado QScrollArea, QFormLayout and QDialog
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
@@ -250,7 +250,7 @@ class AgendaView(QWidget):
     def _add_event_dialog(self):
         # Passar db_manager para o EventDialog
         dialog = EventDialog(db_manager=self.db_manager, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        if dialog.exec() == QDialog.Accepted: # Changed to QDialog.Accepted
             # Acessar os dados salvos no diálogo
             event_data, selected_entities_map = dialog.event_data_to_save 
             
@@ -282,7 +282,7 @@ class AgendaView(QWidget):
 
         # Passar db_manager para o EventDialog
         dialog = EventDialog(db_manager=self.db_manager, event=event_to_edit, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        if dialog.exec() == QDialog.Accepted: # Changed to QDialog.Accepted
             event_data, selected_entities_map = dialog.event_data_to_save
             
             if event_data and event_data.id is not None: 

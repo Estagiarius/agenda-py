@@ -2,7 +2,7 @@ import sys
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QCalendarWidget, QListWidget, 
     QListWidgetItem, QTextEdit, QLabel, QSplitter, QPushButton, QMessageBox,
-    QSpacerItem, QSizePolicy, QScrollArea, QFormLayout # Adicionado QScrollArea, QFormLayout
+    QSpacerItem, QSizePolicy, QScrollArea, QFormLayout, QDialog # Adicionado QScrollArea, QFormLayout and QDialog
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont

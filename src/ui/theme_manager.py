@@ -44,22 +44,78 @@ class ThemeManager:
 
             app.setPalette(light_palette)
             stylesheet = """
+    QWidget { color: black !important; } /* Broadest rule, attempt to catch all text */
+
+    /* Specific overrides where QWidget might be too broad or need refinement */
+    QLabel, QCheckBox, QRadioButton, QGroupBox, QToolTip {
+        color: black !important;
+        background-color: transparent !important; /* Ensure no weird background colors are inherited */
+    }
+    QPushButton {
+        color: black !important;
+        /* background-color: #f0f0f0 !important; Optional: set a specific light button color */
+        /* border: 1px solid #adadad !important;  Optional: set a specific light button border */
+    }
     QTabBar::tab {
-        color: black;
+        color: black !important;
+        /* background: #e1e1e1 !important; Optional: specific tab background */
     }
-    QLabel {
-        color: black;
+    QTabBar::tab:selected {
+        color: black !important; /* Ensure selected tab text is also black */
+        /* background: #cde8ff !important; Optional: specific selected tab background */
     }
-    QCheckBox {
-        color: black;
+    QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+        color: black !important;
+        background-color: white !important; /* Explicitly set background for input fields */
+        border: 1px solid #adadad !important; /* Typical light theme border for input fields */
+        selection-background-color: #0078d7 !important; /* Standard blue selection */
+        selection-color: white !important; /* White text for selected blue background */
     }
-    QRadioButton {
-        color: black;
+    QComboBox QAbstractItemView { /* Dropdown list of QComboBox */
+        color: black !important;
+        background-color: white !important;
+        selection-background-color: #0078d7 !important;
+        selection-color: white !important;
     }
-    QGroupBox {
-        color: black;
+    QMenu {
+        color: black !important;
+        background-color: #f0f0f0 !important; /* Light background for menus */
+        border: 1px solid #adadad !important;
     }
-    /* Add any other specific widget styles if necessary, ensuring they are appropriate for a light theme */
+    QMenu::item {
+        color: black !important;
+        background-color: transparent !important;
+    }
+    QMenu::item:selected {
+        color: black !important; /* Or white if background is dark blue */
+        background-color: #0078d7 !important; /* Blue highlight for selected menu item */
+        /* color: white !important; */ /* If using dark blue highlight, text should be white */
+    }
+    QMenuBar {
+        color: black !important;
+        background-color: #f0f0f0 !important;
+    }
+    QMenuBar::item {
+        color: black !important;
+        background-color: transparent !important;
+    }
+    QMenuBar::item:selected {
+        color: black !important; /* Or white if background is dark blue */
+        background-color: #0078d7 !important; /* Blue highlight */
+        /* color: white !important; */
+    }
+    QTableView, QTreeView, QListView {
+        color: black !important; /* Default text color for items */
+        background-color: white !important;
+        alternate-background-color: #f0f0f0 !important; /* For alternating row colors if enabled */
+        selection-background-color: #0078d7 !important;
+        selection-color: white !important;
+    }
+    QHeaderView::section {
+        color: black !important;
+        background-color: #e1e1e1 !important;
+        border: 1px solid #adadad !important;
+    }
 """
             app.setStyleSheet(stylesheet)
             # app.setStyleSheet("") # Já está no início da função, não precisa repetir aqui

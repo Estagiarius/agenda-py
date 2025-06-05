@@ -141,26 +141,26 @@ class ThemeManager:
         elif theme_name == "dark":
             dark_palette = QPalette()
 
-            # Cores base do tema escuro
+            # Cores base do tema escuro (Original Dark Gray)
             dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
             dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
-            dark_palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25)) # Fundo de widgets de entrada (QLineEdit, QTextEdit)
-            dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53)) # Usado em QTableView, QTreeView
-            dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(42, 42, 42)) # Um pouco mais escuro que Window
+            dark_palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
+            dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+            dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(42, 42, 42))
             dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
-            dark_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255)) # Texto em widgets de entrada
+            dark_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
             
-            # Botões
-            dark_palette.setColor(QPalette.ColorRole.Button, QColor(66, 66, 66)) # Cor de fundo do botão
-            dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255)) # Texto do botão
+            # Botões (Original Dark Gray)
+            dark_palette.setColor(QPalette.ColorRole.Button, QColor(66, 66, 66))
+            dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
             
-            # Destaques e Links
-            dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0)) # Usado para texto que precisa se destacar
-            dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218)) # Cor padrão para links
-            dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218)) # Cor de fundo de itens selecionados
-            dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255)) # Texto de itens selecionados (branco é mais comum que preto aqui)
+            # Destaques e Links (Original Dark Gray)
+            dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+            dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218)) # Standard link blue
+            dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218)) # Standard highlight blue
+            dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
 
-            # Cores para estados desabilitados (crucial para usabilidade)
+            # Cores para estados desabilitados (Original Dark Gray)
             disabled_text_color = QColor(127, 127, 127)
             disabled_button_color = QColor(45, 45, 45)
             
@@ -168,52 +168,48 @@ class ThemeManager:
             dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, disabled_text_color)
             dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, disabled_text_color)
             dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Button, disabled_button_color)
-            # Para QLineEdit, QComboBox desabilitados, o Base pode precisar ser ajustado para Disabled também
             dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, QColor(40,40,40)) 
-            # PlaceholderText Color (não é um ColorRole direto, geralmente controlado por stylesheet ou widget específico)
-            # dark_palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(120,120,120)) # Exemplo
 
             app.setPalette(dark_palette)
+            # No specific stylesheet for the original dark theme was mentioned, keeping it minimal.
+            print("INFO: Tema 'Escuro (Cinza)' aplicado (via paleta).")
+
+        elif theme_name == "dark_blue":
+            dark_blue_palette = QPalette()
+
+            # Cores base do tema escuro azulado
+            dark_blue_palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 70))
+            dark_blue_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+            dark_blue_palette.setColor(QPalette.ColorRole.Base, QColor(40, 40, 80))
+            dark_blue_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 75))
+            dark_blue_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(42, 42, 42)) # Kept original, can be adjusted
+            dark_blue_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+            dark_blue_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+
+            # Botões
+            dark_blue_palette.setColor(QPalette.ColorRole.Button, QColor(50, 50, 90))
+            dark_blue_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
             
-            # Exemplo de stylesheet global que pode complementar um tema escuro
-            # (focado em QLineEdit, QComboBox, QTableWidget, etc. que podem não herdar todas as cores da paleta perfeitamente)
-            # app.setStyleSheet("""
-            #     QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QDateEdit, QDateTimeEdit {
-            #         background-color: #191919; /* Cor de Base do tema escuro */
-            #         color: #FFFFFF; /* Cor de Texto do tema escuro */
-            #         border: 1px solid #353535; /* Cor de Borda sutil */
-            #     }
-            #     QTableView, QTableWidget {
-            #         background-color: #191919;
-            #         alternate-background-color: #353535;
-            #         gridline-color: #4A4A4A;
-            #     }
-            #     QHeaderView::section {
-            #         background-color: #353535;
-            #         color: #FFFFFF;
-            #         border: 1px solid #4A4A4A;
-            #     }
-            #     QPushButton {
-            #         background-color: #424242;
-            #         color: #FFFFFF;
-            #         border: 1px solid #5A5A5A;
-            #     }
-            #     QPushButton:hover {
-            #         background-color: #5A5A5A;
-            #     }
-            #     QPushButton:pressed {
-            #         background-color: #303030;
-            #     }
-            #     QPushButton:disabled {
-            #         background-color: #2D2D2D;
-            #         color: #7F7F7F;
-            #     }
-            #     QCheckBox::indicator:unchecked { background-color: #191919; border: 1px solid #353535; }
-            #     QCheckBox::indicator:checked { background-color: #2A82DA; border: 1px solid #2A82DA; }
-            #     QRadioButton::indicator:unchecked { background-color: #191919; border: 1px solid #353535; }
-            #     QRadioButton::indicator:checked { background-color: #2A82DA; border: 1px solid #2A82DA; }
-            # """)
-            print("INFO: Tema 'Escuro' aplicado (via paleta).")
+            # Destaques e Links
+            dark_blue_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0)) # Kept original
+            dark_blue_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218)) # Standard link blue
+            dark_blue_palette.setColor(QPalette.ColorRole.Highlight, QColor(60, 60, 120))
+            dark_blue_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+
+            # Cores para estados desabilitados
+            disabled_text_color = QColor(150, 150, 170)
+            disabled_button_color = QColor(45, 45, 45) # Same as before, check visibility with blue
+
+            dark_blue_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, disabled_text_color)
+            dark_blue_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, disabled_text_color)
+            dark_blue_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, disabled_text_color)
+            dark_blue_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Button, disabled_button_color)
+            dark_blue_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, QColor(35,35,75))
+
+            app.setPalette(dark_blue_palette)
+            # Optional: Add any specific stylesheet for dark_blue if needed, similar to the commented out one.
+            # For now, no specific stylesheet is applied for dark_blue, relying on QPalette.
+            print("INFO: Tema 'Azul Escuro' aplicado (via paleta).")
             
         else:
             print(f"AVISO: Nome de tema desconhecido '{theme_name}'. Usando padrão do sistema.")

@@ -67,7 +67,7 @@ class SettingsView(QWidget):
         self.default_username_edit.setText(default_username or "") 
 
         # Carregar preferência de tema
-        current_theme_value = self.db_manager.get_setting('theme_preference', 'system')
+        current_theme_value = self.db_manager.get_setting('theme_preference', 'dark')
         for i in range(self.theme_combo.count()):
             if self.theme_combo.itemData(i) == current_theme_value:
                 self.theme_combo.setCurrentIndex(i)

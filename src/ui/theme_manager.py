@@ -28,9 +28,22 @@ class ThemeManager:
             # Podemos ajustar cores específicas se necessário, mas começar com o padrão é bom.
             light_palette = QPalette()
             # Exemplo de ajuste (opcional, a paleta padrão já é clara):
-            # light_palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
-            # light_palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+            light_palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240)) # Mantendo este ajuste de exemplo
+            light_palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0)) # Texto principal preto
+            light_palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0)) # Texto em campos de entrada
+            light_palette.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0)) # Texto de botões preto
+            light_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(0,0,0)) # Texto de tooltips preto
+            # Cores base para ToolTip e Base podem ser definidas se o padrão não for bom
+            light_palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255)) # Fundo de campos de entrada (geralmente branco)
+            light_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 220)) # Fundo de tooltips (amarelo claro)
+            # HighlightedText deve contrastar com Highlight
+            light_palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 120, 215)) # Cor de seleção/foco (azul)
+            light_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255)) # Texto selecionado/em foco (branco)
+            # BrightText para alertas ou texto especial
+            light_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0)) # Texto brilhante (vermelho)
+
             app.setPalette(light_palette)
+            # app.setStyleSheet("") # Já está no início da função, não precisa repetir aqui
             print("INFO: Tema 'Claro' aplicado.")
 
         elif theme_name == "dark":

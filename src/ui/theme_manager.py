@@ -43,6 +43,25 @@ class ThemeManager:
             light_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0)) # Texto brilhante (vermelho)
 
             app.setPalette(light_palette)
+            stylesheet = """
+    QTabBar::tab {
+        color: black;
+    }
+    QLabel {
+        color: black;
+    }
+    QCheckBox {
+        color: black;
+    }
+    QRadioButton {
+        color: black;
+    }
+    QGroupBox {
+        color: black;
+    }
+    /* Add any other specific widget styles if necessary, ensuring they are appropriate for a light theme */
+"""
+            app.setStyleSheet(stylesheet)
             # app.setStyleSheet("") # Já está no início da função, não precisa repetir aqui
             print("INFO: Tema 'Claro' aplicado.")
 

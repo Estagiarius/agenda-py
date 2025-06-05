@@ -40,6 +40,7 @@ class SettingsView(QWidget):
         self.theme_combo.addItem("Padrão do Sistema", userData="system")
         self.theme_combo.addItem("Claro", userData="light")
         self.theme_combo.addItem("Escuro", userData="dark")
+        self.theme_combo.addItem("Azul Escuro", userData="dark_blue") # Nova opção de tema
         form_layout.addRow("Tema da Aplicação:", self.theme_combo)
 
         main_layout.addLayout(form_layout)

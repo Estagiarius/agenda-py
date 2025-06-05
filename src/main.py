@@ -51,11 +51,11 @@ def main():
         sys.exit(1)
 
     # Carregar e aplicar o tema ANTES de criar a MainWindow
-    saved_theme_name = db_manager.get_setting('theme_preference', 'dark') # 'system' como padrão
+    saved_theme_name = db_manager.get_setting('theme_preference', 'light') # 'light' como padrão
     if saved_theme_name: # Garante que não é None
         ThemeManager.apply_theme(app, saved_theme_name)
     else: # Fallback caso get_setting retorne None inesperadamente
-        ThemeManager.apply_theme(app, 'dark')
+        ThemeManager.apply_theme(app, 'light')
 
 
     main_window = MainWindow(db_manager=db_manager) 

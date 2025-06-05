@@ -44,22 +44,95 @@ class ThemeManager:
 
             app.setPalette(light_palette)
             stylesheet = """
-    QTabBar::tab {
-        color: black;
-    }
+    QWidget { color: black !important; } /* Broadest rule, attempt to catch all text */
+
+    /* Specific overrides where QWidget might be too broad or need refinement */
     QLabel {
-        color: black;
+        color: black !important;
+        background-color: transparent !important; /* Ensure no weird background colors are inherited */
     }
-    QCheckBox {
-        color: black;
+    QCheckBox, QRadioButton, QGroupBox, QToolTip {
+        color: black !important;
+        background-color: transparent !important;
     }
-    QRadioButton {
-        color: black;
+    QPushButton {
+        color: black !important;
+        /* background-color: #f0f0f0 !important; Optional: set a specific light button color */
+        /* border: 1px solid #adadad !important;  Optional: set a specific light button border */
     }
-    QGroupBox {
-        color: black;
+    QTabBar::tab {
+        color: black !important;
+        /* background: #e1e1e1 !important; Optional: specific tab background */
     }
-    /* Add any other specific widget styles if necessary, ensuring they are appropriate for a light theme */
+    QTabBar::tab:selected {
+        color: black !important; /* Ensure selected tab text is also black */
+        /* background: #cde8ff !important; Optional: specific selected tab background */
+    }
+
+    /* Styles for QListWidget (navigation menu) */
+    QListWidget {
+        font-size: 14px !important; /* Example: Enforce font size if needed */
+        color: black !important;    /* Default text color for the widget itself */
+    }
+    QListWidget::item {
+        color: black !important;    /* Text color for non-selected items */
+    }
+
+    QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+        color: black !important;
+        background-color: white !important; /* Explicitly set background for input fields */
+        border: 1px solid #adadad !important; /* Typical light theme border for input fields */
+        selection-background-color: #0078d7 !important; /* Standard blue selection */
+        selection-color: white !important; /* White text for selected blue background */
+    }
+    QComboBox QAbstractItemView { /* Dropdown list of QComboBox */
+        color: black !important;
+        background-color: white !important;
+        selection-background-color: #0078d7 !important;
+        selection-color: white !important;
+    }
+    QMenu {
+        color: black !important;
+        background-color: #f0f0f0 !important; /* Light background for menus */
+        border: 1px solid #adadad !important;
+    }
+    QMenu::item {
+        color: black !important;
+        background-color: transparent !important;
+    }
+    QMenu::item:selected {
+        color: black !important; /* Or white if background is dark blue */
+        background-color: #0078d7 !important; /* Blue highlight for selected menu item */
+        /* color: white !important; */ /* If using dark blue highlight, text should be white */
+    }
+    QMenuBar {
+        color: black !important;
+        background-color: #f0f0f0 !important;
+    }
+    QMenuBar::item {
+        color: black !important;
+        background-color: transparent !important;
+    }
+    QMenuBar::item:selected {
+        color: black !important; /* Or white if background is dark blue */
+        background-color: #0078d7 !important; /* Blue highlight */
+        /* color: white !important; */
+    }
+    QTableView, QTreeView, QListView { /* Note: QListView is different from QListWidget */
+        color: black !important; /* Default text color for items */
+        background-color: white !important;
+        alternate-background-color: #f0f0f0 !important; /* For alternating row colors if enabled */
+        selection-background-color: #0078d7 !important;
+        selection-color: white !important;
+    }
+    QHeaderView::section {
+        color: black !important;
+        background-color: #e1e1e1 !important;
+        border: 1px solid #adadad !important;
+    }
+    QToolButton {
+        color: black !important;
+    }
 """
             app.setStyleSheet(stylesheet)
             # app.setStyleSheet("") # Já está no início da função, não precisa repetir aqui

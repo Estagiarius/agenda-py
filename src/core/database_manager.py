@@ -2,8 +2,8 @@ import sqlite3
 import json
 import os
 from datetime import datetime, date
-from typing import List, Optional, Any, Dict
-from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity # Adicionadas
+from typing import List, Optional, Any, Dict, Tuple
+from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity, ClassRegistry, AttendanceRecord
 
 class DatabaseManager:
     def __init__(self, db_path='data/agenda.db'):
@@ -196,6 +196,31 @@ class DatabaseManager:
             END;
             """)
 
+            # Tabela ClassRegistries
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ClassRegistries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL,
+                class_date TEXT NOT NULL, -- ISO8601 YYYY-MM-DD
+                content_taught TEXT,
+                attendance_records TEXT, -- JSON List[AttendanceRecord]
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES Events(id) ON DELETE CASCADE,
+                UNIQUE (event_id, class_date)
+            )
+            """)
+
+            # Trigger para ClassRegistries updated_at
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_class_registries_updated_at
+            AFTER UPDATE ON ClassRegistries
+            FOR EACH ROW
+            BEGIN
+                UPDATE ClassRegistries SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
             self.conn.commit()
         except sqlite3.Error as e:
             print(f"Erro ao criar tabelas ou triggers: {e}")
@@ -221,6 +246,22 @@ class DatabaseManager:
         """Converte objeto datetime para string ISO 8601 (formato aceito pelo SQLite)."""
         if dt_obj:
             return dt_obj.isoformat(sep=' ', timespec='seconds') # YYYY-MM-DD HH:MM:SS
+        return None
+
+    def _date_to_str(self, date_obj: Optional[date]) -> Optional[str]:
+        """Converte objeto date para string ISO 8601 (YYYY-MM-DD)."""
+        if date_obj:
+            return date_obj.isoformat()
+        return None
+
+    def _date_from_str(self, date_str: Optional[str]) -> Optional[date]:
+        """Converte string ISO 8601 (YYYY-MM-DD) para objeto date."""
+        if date_str:
+            try:
+                return date.fromisoformat(date_str)
+            except ValueError:
+                print(f"Aviso: Formato de data inesperado '{date_str}'")
+                return None
         return None
 
     def get_events_by_date(self, date_obj: date) -> List[Event]:
@@ -1055,7 +1096,241 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Erro ao buscar tentativas para QuizConfig ID {quiz_config_id}: {e}")
         return attempts
+
+    # --- CRUD para ClassRegistry ---
+
+    def _class_registry_from_row(self, row: sqlite3.Row) -> Optional[ClassRegistry]:
+        """Converte uma linha do banco de dados para um objeto ClassRegistry."""
+        if not row:
+            return None
+
+        attendance_records_list: List[AttendanceRecord] = []
+        if row['attendance_records']:
+            try:
+                loaded_records = json.loads(row['attendance_records'])
+                if isinstance(loaded_records, list):
+                    # Validação básica da estrutura de AttendanceRecord
+                    for record_dict in loaded_records:
+                        if isinstance(record_dict, dict) and \
+                           'student_id' in record_dict and isinstance(record_dict['student_id'], int) and \
+                           'status' in record_dict and isinstance(record_dict['status'], str):
+                            # student_name é opcional
+                            attendance_records_list.append(AttendanceRecord(
+                                student_id=record_dict['student_id'],
+                                status=record_dict['status'],
+                                student_name=record_dict.get('student_name')
+                            ))
+                        else:
+                            print(f"Aviso: Registro de presença inválido em ClassRegistry ID {row['id']}: {record_dict}")
+                else:
+                    print(f"Aviso: 'attendance_records' para ClassRegistry ID {row['id']} não é uma lista JSON válida.")
+            except json.JSONDecodeError:
+                print(f"Aviso: Falha ao decodificar 'attendance_records' JSON para ClassRegistry ID {row['id']}.")
+
+        return ClassRegistry(
+            id=row['id'],
+            event_id=row['event_id'],
+            class_date=self._date_from_str(row['class_date']),
+            content_taught=row['content_taught'],
+            attendance_records=attendance_records_list,
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at'])
+        )
+
+    def save_class_registry(self, registry: ClassRegistry) -> Optional[ClassRegistry]:
+        """Salva (insere ou atualiza) um registro de classe."""
+        if not self.conn:
+            print("Conexão com o banco de dados não estabelecida.")
+            return None
+
+        attendance_records_json = json.dumps(registry.attendance_records)
+        class_date_str = self._date_to_str(registry.class_date)
+
+        try:
+            cursor = self.conn.cursor()
+            if registry.id is None: # INSERT
+                query = """
+                INSERT INTO ClassRegistries (event_id, class_date, content_taught, attendance_records)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(event_id, class_date) DO UPDATE SET
+                content_taught = excluded.content_taught,
+                attendance_records = excluded.attendance_records,
+                updated_at = CURRENT_TIMESTAMP
+                """
+                # Para ON CONFLICT funcionar com AUTOINCREMENT, é melhor buscar depois ou usar RETURNING se suportado e necessário
+                # SQLite não suporta RETURNING id diretamente com ON CONFLICT DO UPDATE de forma simples para pegar o ID original ou o novo.
+                # Vamos inserir ou atualizar, e depois buscar pelo event_id e class_date para obter o objeto completo.
+                cursor.execute(query, (
+                    registry.event_id,
+                    class_date_str,
+                    registry.content_taught,
+                    attendance_records_json
+                ))
+                self.conn.commit()
+                # Se foi um INSERT e não um UPDATE do ON CONFLICT, lastrowid será o novo id.
+                # Se foi um UPDATE do ON CONFLICT, lastrowid pode ser 0 ou o id da linha atualizada, dependendo da versão do SQLite.
+                # É mais seguro buscar pelo event_id e class_date.
+                return self.get_class_registry(registry.event_id, registry.class_date)
+
+            else: # UPDATE
+                query = """
+                UPDATE ClassRegistries
+                SET event_id = ?, class_date = ?, content_taught = ?, attendance_records = ?
+                WHERE id = ?
+                """
+                # updated_at será atualizado pelo trigger
+                cursor.execute(query, (
+                    registry.event_id,
+                    class_date_str,
+                    registry.content_taught,
+                    attendance_records_json,
+                    registry.id
+                ))
+                self.conn.commit()
+                if cursor.rowcount > 0:
+                    return self.get_class_registry_by_id(registry.id)
+                # Se rowcount for 0, pode ser que o ID não exista, ou os dados eram os mesmos.
+                # Retornar o objeto original ou None dependendo da política desejada.
+                # Por consistência, buscar o objeto pode ser uma boa ideia.
+                return self.get_class_registry_by_id(registry.id)
+
+        except sqlite3.Error as e:
+            print(f"Erro ao salvar ClassRegistry: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return None
+
+    def get_class_registry(self, event_id: int, class_date: date) -> Optional[ClassRegistry]:
+        """Busca um registro de classe por event_id e class_date."""
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM ClassRegistries WHERE event_id = ? AND class_date = ?"
+            cursor.execute(query, (event_id, self._date_to_str(class_date)))
+            row = cursor.fetchone()
+            return self._class_registry_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar ClassRegistry por event_id e class_date: {e}")
+            return None
+
+    def get_class_registry_by_id(self, registry_id: int) -> Optional[ClassRegistry]:
+        """Busca um registro de classe pelo seu ID."""
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM ClassRegistries WHERE id = ?"
+            cursor.execute(query, (registry_id,))
+            row = cursor.fetchone()
+            return self._class_registry_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar ClassRegistry por ID: {e}")
+            return None
+
+    def get_classes_for_teacher_today(self, teacher_id: int) -> List[Event]:
+        """Busca aulas (Events tipo 'aula') para um professor hoje."""
+        if not self.conn: return []
+        today_str = date.today().isoformat()
+        events: List[Event] = []
+        try:
+            cursor = self.conn.cursor()
+            # Busca eventos do tipo 'aula' para o professor_id onde a data de start_time é hoje
+            query = """
+            SELECT E.*
+            FROM Events E
+            JOIN Event_Entities EE ON E.id = EE.event_id
+            WHERE EE.entity_id = ? AND EE.role = 'teacher'
+              AND E.event_type = 'aula'
+              AND date(E.start_time) = ?
+            ORDER BY E.start_time
+            """
+            cursor.execute(query, (teacher_id, today_str))
+            for row in cursor.fetchall():
+                event = Event(
+                    id=row['id'], title=row['title'], description=row['description'],
+                    start_time=self._datetime_from_str(row['start_time']),
+                    end_time=self._datetime_from_str(row['end_time']),
+                    event_type=row['event_type'], location=row['location'],
+                    recurrence_rule=row['recurrence_rule'],
+                    created_at=self._datetime_from_str(row['created_at']),
+                    updated_at=self._datetime_from_str(row['updated_at'])
+                )
+                if event.start_time: # Garantir que o evento tem um start_time válido
+                    events.append(event)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar aulas para o professor ID {teacher_id} hoje: {e}")
+        return events
+
+    def get_students_for_class(self, event_id: int) -> List[Entity]:
+        """Busca todos os alunos (Entities com role 'student') para uma aula específica (Event)."""
+        if not self.conn: return []
+        students: List[Entity] = []
+        try:
+            cursor = self.conn.cursor()
+            query = """
+            SELECT E.*
+            FROM Entities E
+            JOIN Event_Entities EE ON E.id = EE.entity_id
+            WHERE EE.event_id = ? AND EE.role = 'student'
+            ORDER BY E.name
+            """
+            cursor.execute(query, (event_id,))
+            for row in cursor.fetchall():
+                entity = self._entity_from_row(row)
+                if entity:
+                    students.append(entity)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar alunos para o evento ID {event_id}: {e}")
+        return students
+
+    def get_class_registries_for_date(self, teacher_id: int, selected_date: date) -> List[Tuple[Event, Optional[ClassRegistry]]]:
+        """
+        Busca todas as aulas de um professor para uma data específica e seus respectivos registros de classe.
+        Retorna uma lista de tuplas (Event, Optional[ClassRegistry]).
+        """
+        if not self.conn: return []
+
+        results: List[Tuple[Event, Optional[ClassRegistry]]] = []
+        selected_date_str = self._date_to_str(selected_date)
+
+        try:
+            cursor = self.conn.cursor()
+            # 1. Buscar todas as aulas (Events) para o professor na data selecionada
+            query_events = """
+            SELECT E.*
+            FROM Events E
+            JOIN Event_Entities EE ON E.id = EE.event_id
+            WHERE EE.entity_id = ? AND EE.role = 'teacher'
+              AND E.event_type = 'aula'
+              AND date(E.start_time) = ?
+            ORDER BY E.start_time
+            """
+            cursor.execute(query_events, (teacher_id, selected_date_str))
+
+            teacher_classes_on_date: List[Event] = []
+            for row in cursor.fetchall():
+                event = Event(
+                    id=row['id'], title=row['title'], description=row['description'],
+                    start_time=self._datetime_from_str(row['start_time']),
+                    end_time=self._datetime_from_str(row['end_time']),
+                    event_type=row['event_type'], location=row['location'],
+                    recurrence_rule=row['recurrence_rule'],
+                    created_at=self._datetime_from_str(row['created_at']),
+                    updated_at=self._datetime_from_str(row['updated_at'])
+                )
+                if event.start_time: # Apenas eventos com start_time válidos
+                    teacher_classes_on_date.append(event)
+
+            # 2. Para cada aula, buscar seu ClassRegistry
+            for event_obj in teacher_classes_on_date:
+                if event_obj.id is not None: # Garantir que event_obj.id não é None
+                    class_registry = self.get_class_registry(event_obj.id, selected_date)
+                    results.append((event_obj, class_registry))
+
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar registros de classe para professor ID {teacher_id} na data {selected_date_str}: {e}")
         
+        return results
+
     def add_sample_data(self):
         """Adiciona dados de exemplo: um evento, uma tarefa e algumas perguntas."""
         if not self.conn:

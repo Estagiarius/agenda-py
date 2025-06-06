@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+from datetime import datetime, date
+from typing import List, Optional, Dict, Any, TypedDict
 
 class Entity:
     def __init__(self,
@@ -124,6 +124,33 @@ class QuizAttempt:
 
     def __repr__(self):
         return f"<QuizAttempt(id={self.id}, config_id={self.quiz_config_id}, score={self.score}/{self.total_questions})>"
+
+
+class AttendanceRecord(TypedDict):
+    student_id: int
+    status: str  # e.g., "Presente", "Ausente", "Atrasado"
+    student_name: Optional[str]  # For convenience
+
+
+class ClassRegistry:
+    def __init__(self,
+                 event_id: int,
+                 class_date: date,
+                 attendance_records: List[AttendanceRecord],
+                 id: Optional[int] = None,
+                 content_taught: Optional[str] = None,
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.event_id = event_id
+        self.class_date = class_date
+        self.content_taught = content_taught
+        self.attendance_records = attendance_records if attendance_records is not None else []
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<ClassRegistry(id={self.id}, event_id={self.event_id}, class_date='{self.class_date}', records={len(self.attendance_records)})>"
 
 
 if __name__ == '__main__':

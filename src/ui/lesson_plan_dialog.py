@@ -11,6 +11,7 @@ from datetime import datetime # Ensure datetime is imported
 
 from src.core.models import LessonPlan, LessonPlanFile, LessonPlanLink, Entity
 from src.core.database_manager import DatabaseManager
+from src.ui.rich_text_editor_widget import RichTextEditorWidget
 
 class LessonPlanDialog(QDialog):
     def __init__(self, db_manager: DatabaseManager, lesson_plan: Optional[LessonPlan] = None, teacher_id: Optional[int] = None, parent=None):
@@ -76,29 +77,29 @@ class LessonPlanDialog(QDialog):
         rich_text_form_layout = QFormLayout(rich_text_widget_container)
         rich_text_form_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
 
-        self.objectives_edit = QTextEdit()
+        self.objectives_edit = RichTextEditorWidget()
         self.objectives_edit.setPlaceholderText("Detalhe os objetivos de aprendizagem...")
-        self.objectives_edit.setMinimumHeight(80)
+        self.objectives_edit.text_edit.setMinimumHeight(80) # Access internal QTextEdit for min height
         rich_text_form_layout.addRow("Objetivos:", self.objectives_edit)
 
-        self.program_content_edit = QTextEdit()
+        self.program_content_edit = RichTextEditorWidget()
         self.program_content_edit.setPlaceholderText("Descreva os tópicos da aula...")
-        self.program_content_edit.setMinimumHeight(100)
+        self.program_content_edit.text_edit.setMinimumHeight(100)
         rich_text_form_layout.addRow("Conteúdo Programático:", self.program_content_edit)
 
-        self.methodology_edit = QTextEdit()
+        self.methodology_edit = RichTextEditorWidget()
         self.methodology_edit.setPlaceholderText("Descreva as atividades e métodos de ensino...")
-        self.methodology_edit.setMinimumHeight(100)
+        self.methodology_edit.text_edit.setMinimumHeight(100)
         rich_text_form_layout.addRow("Metodologia/Atividades:", self.methodology_edit)
 
-        self.resources_text_edit = QTextEdit()
+        self.resources_text_edit = RichTextEditorWidget()
         self.resources_text_edit.setPlaceholderText("Liste os materiais e recursos textuais (livros, etc.). Links e arquivos podem ser anexados abaixo.")
-        self.resources_text_edit.setMinimumHeight(80)
+        self.resources_text_edit.text_edit.setMinimumHeight(80)
         rich_text_form_layout.addRow("Recursos (descrição textual):", self.resources_text_edit)
 
-        self.assessment_method_edit = QTextEdit()
+        self.assessment_method_edit = RichTextEditorWidget()
         self.assessment_method_edit.setPlaceholderText("Descreva como o progresso dos alunos será avaliado...")
-        self.assessment_method_edit.setMinimumHeight(80)
+        self.assessment_method_edit.text_edit.setMinimumHeight(80)
         rich_text_form_layout.addRow("Forma de Avaliação:", self.assessment_method_edit)
 
         scroll_rich_text.setWidget(rich_text_widget_container)

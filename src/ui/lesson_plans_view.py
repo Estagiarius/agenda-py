@@ -12,6 +12,7 @@ from src.core.models import LessonPlan, Entity # Assuming Entity is used for cla
 from datetime import datetime # For formatting dates
 from PyQt6.QtWidgets import QDialog # Added for type hinting if needed, and good practice
 from src.ui.lesson_plan_dialog import LessonPlanDialog
+from src.ui.lesson_plan_detail_view import LessonPlanDetailView
 
 class LessonPlansView(QWidget):
     def __init__(self, db_manager: DatabaseManager, teacher_id: int, parent: Optional[QWidget] = None):
@@ -53,6 +54,7 @@ class LessonPlansView(QWidget):
         self.lesson_plans_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.lesson_plans_table.verticalHeader().setVisible(False)
         self.lesson_plans_table.setColumnHidden(0, True) # Ocultar coluna ID
+        self.lesson_plans_table.itemDoubleClicked.connect(self._handle_view_lesson_plan_details)
         header = self.lesson_plans_table.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -145,7 +147,8 @@ class LessonPlansView(QWidget):
             self.lesson_plans_table.insertRow(row_position)
 
             # Column 0: ID (hidden)
-            id_item = QTableWidgetItem(str(plan.id))
+            id_item = QTableWidgetItem(str(plan.id)) # Text is for display/sorting if shown
+            id_item.setData(Qt.ItemDataRole.UserRole, plan.id) # Store ID as integer data
             self.lesson_plans_table.setItem(row_position, 0, id_item)
 
             # Column 1: Title
@@ -192,9 +195,49 @@ class LessonPlansView(QWidget):
             # Assuming single row selection or taking the first selected row
             first_selected_row_index = selected_rows[0].row()
             id_item = self.lesson_plans_table.item(first_selected_row_index, 0) # Column 0 is ID
-            if id_item and id_item.text().isdigit():
-                return int(id_item.text())
+            if id_item:
+                # Retrieve the ID stored using UserRole
+                plan_id = id_item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(plan_id, int):
+                    return plan_id
         return None
+
+    def _handle_view_lesson_plan_details(self, item: QTableWidgetItem):
+        """Handles opening the detail view for a double-clicked lesson plan."""
+        if not item: # Should not happen if connected to itemDoubleClicked
+            return
+
+        row = item.row()
+        id_item = self.lesson_plans_table.item(row, 0) # Get item from hidden ID column
+        if not id_item:
+            QMessageBox.warning(self, "Erro", "Não foi possível obter o ID do plano de aula da linha selecionada.")
+            return
+
+        lesson_plan_id = id_item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(lesson_plan_id, int):
+            QMessageBox.warning(self, "Erro de Dados", f"ID do plano de aula inválido na tabela: {lesson_plan_id}")
+            return
+
+        try:
+            # Fetch with teacher_id to ensure user owns the plan, if that's a viewing rule
+            # For detail view, sometimes it's okay to view if you have access, not strict ownership
+            fetched_plan = self.db_manager.get_lesson_plan_by_id(
+                lesson_plan_id=lesson_plan_id,
+                teacher_id=self.current_teacher_id # Or remove teacher_id if viewing is less restricted
+            )
+            if fetched_plan:
+                detail_dialog = LessonPlanDetailView(lesson_plan=fetched_plan,
+                                                     db_manager=self.db_manager,
+                                                     parent=self)
+                detail_dialog.exec()
+            else:
+                QMessageBox.warning(self, "Plano Não Encontrado",
+                                    "O plano de aula selecionado não foi encontrado ou você não tem permissão para visualizá-lo.")
+                self._load_lesson_plans() # Refresh in case it was deleted
+        except Exception as e:
+            QMessageBox.critical(self, "Erro ao Carregar Detalhes",
+                                 f"Não foi possível carregar os detalhes do plano de aula: {e}")
+
 
     def _handle_create_lesson_plan(self):
         """Handles the creation of a new lesson plan."""

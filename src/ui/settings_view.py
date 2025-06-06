@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
-    QPushButton, QLabel, QMessageBox, QComboBox 
+    QPushButton, QLabel, QMessageBox, QComboBox, QCheckBox, QGroupBox # Added QCheckBox, QGroupBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -9,6 +9,13 @@ from PyQt6.QtWidgets import QApplication # Adicionado QApplication
 
 from src.core.database_manager import DatabaseManager
 from src.ui.theme_manager import ThemeManager # Adicionado ThemeManager
+
+# Define notification types and their user-friendly labels
+NOTIFICATION_TYPES = {
+    "event_reminder": "Lembretes de aula/evento",
+    "task_deadline": "Prazos de tarefas",
+    # "general_alert": "Alertas gerais", # Example for future expansion
+}
 
 class SettingsView(QWidget):
     def __init__(self, db_manager: DatabaseManager, parent=None):
@@ -42,8 +49,23 @@ class SettingsView(QWidget):
         self.theme_combo.addItem("Escuro", userData="dark")
         self.theme_combo.addItem("Azul Escuro", userData="dark_blue") # Nova opção de tema
         form_layout.addRow("Tema da Aplicação:", self.theme_combo)
-
         main_layout.addLayout(form_layout)
+
+        # --- Notification Settings GroupBox ---
+        self.notification_toggles = {} # To store checkboxes
+        notification_groupbox = QGroupBox("Configurações de Notificação")
+        notification_groupbox.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        notification_layout = QVBoxLayout() # Layout for inside the group box
+
+        for type_key, type_label in NOTIFICATION_TYPES.items():
+            checkbox = QCheckBox(type_label)
+            checkbox.setFont(QFont("Arial", 10))
+            self.notification_toggles[type_key] = checkbox
+            notification_layout.addWidget(checkbox)
+
+        notification_groupbox.setLayout(notification_layout)
+        main_layout.addWidget(notification_groupbox)
+
         main_layout.addStretch() 
 
         # Botão Salvar
@@ -74,10 +96,16 @@ class SettingsView(QWidget):
                 self.theme_combo.setCurrentIndex(i)
                 break
         
+        # Carregar configurações de notificação
+        for type_key, checkbox in self.notification_toggles.items():
+            is_enabled = self.db_manager.get_notification_preference(type_key)
+            checkbox.setChecked(is_enabled)
+
         print("Configurações carregadas.")
 
     def _save_settings(self):
         """Salva as configurações atuais no banco de dados."""
+        # Salvar nome de usuário padrão
         username_value = self.default_username_edit.text().strip()
         self.db_manager.set_setting('default_username', username_value)
 
@@ -90,12 +118,17 @@ class SettingsView(QWidget):
             app_instance = QApplication.instance()
             if app_instance: # Garante que QApplication.instance() não é None
                 ThemeManager.apply_theme(app_instance, selected_theme_value)
-            else:
+            else: # pragma: no cover
                 print("ERRO: QApplication.instance() retornou None. Não foi possível aplicar o tema dinamicamente.")
 
+        # Salvar configurações de notificação
+        for type_key, checkbox in self.notification_toggles.items():
+            is_enabled = checkbox.isChecked()
+            self.db_manager.set_notification_preference(type_key, is_enabled)
+
         QMessageBox.information(self, "Configurações Salvas", 
-                                "Suas configurações foram salvas e o tema foi aplicado!")
-        print("Configurações salvas e tema aplicado.")
+                                "Suas configurações (incluindo preferências de notificação e tema) foram salvas!")
+        print("Configurações salvas (incluindo notificações e tema).")
 
 # Bloco para teste independente
 if __name__ == '__main__':

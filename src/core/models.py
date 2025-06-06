@@ -126,6 +126,31 @@ class QuizAttempt:
         return f"<QuizAttempt(id={self.id}, config_id={self.quiz_config_id}, score={self.score}/{self.total_questions})>"
 
 
+class Notification:
+    def __init__(self,
+                 title: str,
+                 description: str,
+                 timestamp: datetime,
+                 type: str,
+                 id: Optional[int] = None,
+                 is_read: bool = False,
+                 related_item_id: Optional[int] = None,
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.title = title
+        self.description = description
+        self.timestamp = timestamp
+        self.is_read = is_read
+        self.type = type
+        self.related_item_id = related_item_id
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<Notification(id={self.id}, title='{self.title}', type='{self.type}', is_read={self.is_read})>"
+
+
 if __name__ == '__main__':
     # Exemplos de uso (apenas para teste rápido e demonstração)
     

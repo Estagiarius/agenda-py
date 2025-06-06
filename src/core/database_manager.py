@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, date
 from typing import List, Optional, Any, Dict
-from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity # Adicionadas
+from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity, Notification # Adicionadas
 
 class DatabaseManager:
     def __init__(self, db_path='data/agenda.db'):
@@ -193,6 +193,31 @@ class DatabaseManager:
             FOR EACH ROW
             BEGIN
                 UPDATE QuizAttempts SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Tabela Notifications
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                is_read BOOLEAN NOT NULL DEFAULT 0,
+                type TEXT NOT NULL,
+                related_item_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            # Trigger para Notifications updated_at
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_notifications_updated_at
+            AFTER UPDATE ON Notifications
+            FOR EACH ROW
+            BEGIN
+                UPDATE Notifications SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
             END;
             """)
 
@@ -1055,6 +1080,185 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Erro ao buscar tentativas para QuizConfig ID {quiz_config_id}: {e}")
         return attempts
+
+    # --- CRUD para Notifications ---
+    def _notification_from_row(self, row: sqlite3.Row) -> Optional[Notification]:
+        """Cria um objeto Notification a partir de uma linha do banco de dados."""
+        if not row:
+            return None
+        return Notification(
+            id=row['id'],
+            title=row['title'],
+            description=row['description'],
+            timestamp=self._datetime_from_str(row['timestamp']),
+            is_read=bool(row['is_read']),
+            type=row['type'],
+            related_item_id=row['related_item_id'],
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at'])
+        )
+
+    def add_notification(self, notification: Notification) -> Optional[Notification]:
+        """Adiciona uma nova notificação ao banco de dados."""
+        if not self.conn:
+            print("Conexão com o banco de dados não estabelecida.")
+            return None
+        try:
+            cursor = self.conn.cursor()
+            query = """
+            INSERT INTO Notifications (title, description, timestamp, is_read, type, related_item_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            # For created_at and updated_at, we can let the DB handle defaults on insert,
+            # or pass them if they are already set on the object (e.g. for precise timing).
+            # Here, we'll pass them if available, otherwise DB defaults will apply if columns allow NULL
+            # or if the object's created_at/updated_at are None.
+            # However, our table has DEFAULT CURRENT_TIMESTAMP, so we can omit them from insert for new records.
+            # Let's re-fetch to get all fields including DB-generated ones.
+
+            cursor.execute(query, (
+                notification.title,
+                notification.description,
+                self._datetime_to_str(notification.timestamp),
+                notification.is_read,
+                notification.type,
+                notification.related_item_id,
+                self._datetime_to_str(notification.created_at if notification.created_at else datetime.now()), # Ensure created_at
+                self._datetime_to_str(notification.updated_at if notification.updated_at else datetime.now())  # Ensure updated_at
+            ))
+            self.conn.commit()
+            notification_id = cursor.lastrowid
+            if notification_id:
+                # Fetch the newly created notification to get all fields, especially DB-generated ones
+                return self.get_notification_by_id(notification_id)
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar notificação: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return None
+
+    def get_notification_by_id(self, notification_id: int) -> Optional[Notification]:
+        """Busca uma notificação específica pelo seu ID."""
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Notifications WHERE id = ?"
+            cursor.execute(query, (notification_id,))
+            row = cursor.fetchone()
+            return self._notification_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar notificação por ID: {e}")
+            return None
+
+    def get_notifications(self,
+                          unread_only: bool = False,
+                          notification_type: Optional[str] = None,
+                          limit: Optional[int] = None,
+                          offset: Optional[int] = None) -> List[Notification]:
+        """
+        Busca notificações, com filtros opcionais e ordenação por timestamp descendente.
+        """
+        if not self.conn:
+            return []
+
+        notifications: List[Notification] = []
+        try:
+            cursor = self.conn.cursor()
+            base_query = "SELECT * FROM Notifications"
+            conditions = []
+            params: List[Any] = []
+
+            if unread_only:
+                conditions.append("is_read = 0")
+
+            if notification_type:
+                conditions.append("type = ?")
+                params.append(notification_type)
+
+            if conditions:
+                base_query += " WHERE " + " AND ".join(conditions)
+
+            base_query += " ORDER BY timestamp DESC"
+
+            if limit is not None:
+                base_query += " LIMIT ?"
+                params.append(limit)
+
+            if offset is not None:
+                # LIMIT clause must be present for OFFSET to work in SQLite
+                if limit is None: # pragma: no cover
+                    # Set a very large number if no limit is specified but offset is.
+                    # This is required by SQLite: OFFSET without a LIMIT is an error.
+                    base_query += " LIMIT -1"
+                base_query += " OFFSET ?"
+                params.append(offset)
+
+            cursor.execute(base_query, params)
+            for row in cursor.fetchall():
+                notification_obj = self._notification_from_row(row)
+                if notification_obj:
+                    notifications.append(notification_obj)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar notificações: {e}")
+        return notifications
+
+    def get_unread_notification_count(self) -> int:
+        """Retorna o número total de notificações não lidas."""
+        if not self.conn:
+            return 0
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT COUNT(*) FROM Notifications WHERE is_read = 0"
+            cursor.execute(query)
+            row = cursor.fetchone()
+            if row:
+                return row[0] # COUNT(*) é a primeira coluna
+            return 0
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar contagem de notificações não lidas: {e}")
+            return 0
+
+    def mark_notification_as_read(self, notification_id: int) -> bool:
+        """Marca uma notificação específica como lida."""
+        if not self.conn or notification_id is None:
+            print("Conexão não estabelecida ou ID da notificação não fornecido.")
+            return False
+        try:
+            cursor = self.conn.cursor()
+            query = "UPDATE Notifications SET is_read = 1 WHERE id = ?"
+            # updated_at será atualizado pelo trigger
+            cursor.execute(query, (notification_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0 # Retorna True se alguma linha foi afetada
+        except sqlite3.Error as e:
+            print(f"Erro ao marcar notificação {notification_id} como lida: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+
+    def mark_all_notifications_as_read(self) -> bool:
+        """Marca todas as notificações não lidas como lidas."""
+        if not self.conn:
+            print("Conexão com o banco de dados não estabelecida.")
+            return False
+        try:
+            cursor = self.conn.cursor()
+            # Marca apenas as que não estão lidas para evitar updates desnecessários
+            # e para que o rowcount reflita o número de notificações que de fato foram marcadas.
+            query = "UPDATE Notifications SET is_read = 1 WHERE is_read = 0"
+            # updated_at será atualizado pelo trigger para todas as linhas afetadas
+            cursor.execute(query)
+            self.conn.commit()
+            # Retorna True se alguma linha foi afetada, ou se não havia não lidas (rowcount == 0)
+            # Consideramos sucesso mesmo se não havia nada a ser marcado.
+            # Se for importante saber se algo mudou, pode-se checar cursor.rowcount > 0
+            return True
+        except sqlite3.Error as e:
+            print(f"Erro ao marcar todas as notificações como lidas: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
         
     def add_sample_data(self):
         """Adiciona dados de exemplo: um evento, uma tarefa e algumas perguntas."""
@@ -1124,6 +1328,39 @@ class DatabaseManager:
             print("Nenhuma nova pergunta de exemplo foi adicionada (provavelmente já existiam).")
 
     # --- Settings ---
+    def _get_notification_pref_key(self, notification_type: str) -> str:
+        """Helper para gerar a chave de preferência de notificação."""
+        return f"notification_pref_{notification_type.lower().replace(' ', '_')}"
+
+    def set_notification_preference(self, notification_type: str, is_enabled: bool) -> bool:
+        """Salva a preferência de habilitação para um tipo de notificação."""
+        if not notification_type:
+            # Log or raise error, as notification_type should not be empty.
+            # For now, print error and return False.
+            print("Erro: Tipo de notificação não pode ser vazio ao definir preferência.")
+            return False
+
+        pref_key = self._get_notification_pref_key(notification_type)
+        value_to_store = '1' if is_enabled else '0'
+        return self.set_setting(pref_key, value_to_store)
+
+    def get_notification_preference(self, notification_type: str) -> bool:
+        """
+        Busca a preferência de habilitação para um tipo de notificação.
+        Retorna True (habilitado) por padrão se nenhuma configuração explícita for encontrada.
+        """
+        if not notification_type:
+            # This case might indicate an issue elsewhere, but we'll default to True.
+            print("Aviso: Tipo de notificação não fornecido, retornando preferência padrão (habilitado).")
+            return True
+
+        pref_key = self._get_notification_pref_key(notification_type)
+        stored_value = self.get_setting(pref_key) # Default value from get_setting is None
+
+        if stored_value is None:
+            return True # Habilitado por padrão (se a chave não existir)
+        return stored_value == '1' # Compara com '1' para determinar se está habilitado
+
     def get_setting(self, key: str, default_value: Optional[str] = None) -> Optional[str]:
         """Busca uma configuração pelo sua chave. Retorna default_value se não encontrada."""
         if not self.conn: return default_value

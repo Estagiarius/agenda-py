@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, date
 from typing import List, Optional, Any, Dict
-from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity # Adicionadas
+from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity, StudentGroup, Assessment, Grade # Adicionadas
 
 class DatabaseManager:
     def __init__(self, db_path='data/agenda.db'):
@@ -193,6 +193,78 @@ class DatabaseManager:
             FOR EACH ROW
             BEGIN
                 UPDATE QuizAttempts SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Tabela StudentGroups
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS StudentGroups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                teacher_id INTEGER, -- FK to Entities table (type='teacher')
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (teacher_id) REFERENCES Entities(id) ON DELETE SET NULL
+            )
+            """)
+
+            # Trigger para StudentGroups updated_at
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_student_groups_updated_at
+            AFTER UPDATE ON StudentGroups
+            FOR EACH ROW
+            BEGIN
+                UPDATE StudentGroups SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Tabela Assessments
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Assessments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                date TIMESTAMP,
+                student_group_id INTEGER NOT NULL,
+                max_value REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_group_id) REFERENCES StudentGroups(id) ON DELETE CASCADE
+            )
+            """)
+
+            # Trigger para Assessments updated_at
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_assessments_updated_at
+            AFTER UPDATE ON Assessments
+            FOR EACH ROW
+            BEGIN
+                UPDATE Assessments SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Tabela Grades
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Grades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL, -- FK to Entities table (type='student')
+                score REAL NOT NULL,
+                observations TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (assessment_id) REFERENCES Assessments(id) ON DELETE CASCADE,
+                FOREIGN KEY (student_id) REFERENCES Entities(id) ON DELETE CASCADE,
+                UNIQUE (assessment_id, student_id) -- Ensures a student has only one grade per assessment
+            )
+            """)
+
+            # Trigger para Grades updated_at
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_grades_updated_at
+            AFTER UPDATE ON Grades
+            FOR EACH ROW
+            BEGIN
+                UPDATE Grades SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
             END;
             """)
 
@@ -1055,7 +1127,382 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Erro ao buscar tentativas para QuizConfig ID {quiz_config_id}: {e}")
         return attempts
+
+    # --- CRUD para StudentGroup ---
+    def _student_group_from_row(self, row: sqlite3.Row) -> Optional[StudentGroup]:
+        if not row:
+            return None
+        return StudentGroup(
+            id=row['id'],
+            name=row['name'],
+            teacher_id=row['teacher_id'],
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at'])
+        )
+
+    def add_student_group(self, name: str, teacher_id: Optional[int] = None) -> Optional[StudentGroup]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "INSERT INTO StudentGroups (name, teacher_id) VALUES (?, ?)"
+            cursor.execute(query, (name, teacher_id))
+            self.conn.commit()
+            group_id = cursor.lastrowid
+            if group_id:
+                return self.get_student_group(group_id)
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar StudentGroup: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_student_group(self, group_id: int) -> Optional[StudentGroup]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM StudentGroups WHERE id = ?"
+            cursor.execute(query, (group_id,))
+            row = cursor.fetchone()
+            return self._student_group_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar StudentGroup por ID: {e}")
+            return None
+
+    def get_all_student_groups(self) -> List[StudentGroup]:
+        if not self.conn: return []
+        groups: List[StudentGroup] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM StudentGroups ORDER BY name"
+            cursor.execute(query)
+            for row in cursor.fetchall():
+                group = self._student_group_from_row(row)
+                if group:
+                    groups.append(group)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar todos os StudentGroups: {e}")
+        return groups
+
+    def update_student_group(self, group_id: int, name: Optional[str] = None, teacher_id: Optional[int] = None) -> bool:
+        if not self.conn: return False
+
+        fields_to_update = []
+        params = []
+
+        if name is not None:
+            fields_to_update.append("name = ?")
+            params.append(name)
+
+        if teacher_id is not None: # Allow setting teacher_id to None explicitly
+            fields_to_update.append("teacher_id = ?")
+            params.append(teacher_id)
+        elif 'teacher_id' in self.get_student_group(group_id).__dict__ and teacher_id is None : # Special case if want to set it to NULL
+             fields_to_update.append("teacher_id = ?")
+             params.append(None)
+
+
+        if not fields_to_update:
+            return False # No fields to update
+
+        params.append(group_id)
         
+        try:
+            cursor = self.conn.cursor()
+            query = f"UPDATE StudentGroups SET {', '.join(fields_to_update)} WHERE id = ?"
+            # updated_at será atualizado pelo trigger
+            cursor.execute(query, tuple(params))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao atualizar StudentGroup ID {group_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_student_group(self, group_id: int) -> bool:
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM StudentGroups WHERE id = ?"
+            cursor.execute(query, (group_id,))
+            self.conn.commit()
+            # ON DELETE CASCADE/SET NULL should handle related Assessments/FKs as defined in schema
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir StudentGroup ID {group_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    # --- CRUD para Assessment ---
+    def _assessment_from_row(self, row: sqlite3.Row) -> Optional[Assessment]:
+        if not row:
+            return None
+        return Assessment(
+            id=row['id'],
+            title=row['title'],
+            date=self._datetime_from_str(row['date']),
+            student_group_id=row['student_group_id'],
+            max_value=row['max_value'],
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at'])
+        )
+
+    def add_assessment(self, title: str, student_group_id: int, max_value: float, date: Optional[datetime] = None) -> Optional[Assessment]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "INSERT INTO Assessments (title, date, student_group_id, max_value) VALUES (?, ?, ?, ?)"
+            cursor.execute(query, (title, self._datetime_to_str(date), student_group_id, max_value))
+            self.conn.commit()
+            assessment_id = cursor.lastrowid
+            if assessment_id:
+                return self.get_assessment(assessment_id)
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar Assessment: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_assessment(self, assessment_id: int) -> Optional[Assessment]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Assessments WHERE id = ?"
+            cursor.execute(query, (assessment_id,))
+            row = cursor.fetchone()
+            return self._assessment_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar Assessment por ID: {e}")
+            return None
+
+    def get_assessments_by_group(self, student_group_id: int) -> List[Assessment]:
+        if not self.conn: return []
+        assessments: List[Assessment] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Assessments WHERE student_group_id = ? ORDER BY date DESC"
+            cursor.execute(query, (student_group_id,))
+            for row in cursor.fetchall():
+                assessment = self._assessment_from_row(row)
+                if assessment:
+                    assessments.append(assessment)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar Assessments para o grupo ID {student_group_id}: {e}")
+        return assessments
+
+    def get_all_assessments(self) -> List[Assessment]:
+        if not self.conn: return []
+        assessments: List[Assessment] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Assessments ORDER BY date DESC"
+            cursor.execute(query)
+            for row in cursor.fetchall():
+                assessment = self._assessment_from_row(row)
+                if assessment:
+                    assessments.append(assessment)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar todos os Assessments: {e}")
+        return assessments
+
+    def update_assessment(self, assessment_id: int, title: Optional[str] = None, date: Optional[datetime] = None,
+                          student_group_id: Optional[int] = None, max_value: Optional[float] = None) -> bool:
+        if not self.conn: return False
+
+        fields_to_update = []
+        params = []
+
+        if title is not None:
+            fields_to_update.append("title = ?")
+            params.append(title)
+        if date is not None: # Allow date to be set to None (NULL)
+            fields_to_update.append("date = ?")
+            params.append(self._datetime_to_str(date))
+        elif 'date' in self.get_assessment(assessment_id).__dict__ and date is None : # Special case if want to set it to NULL
+             fields_to_update.append("date = ?")
+             params.append(None)
+        if student_group_id is not None:
+            fields_to_update.append("student_group_id = ?")
+            params.append(student_group_id)
+        if max_value is not None:
+            fields_to_update.append("max_value = ?")
+            params.append(max_value)
+
+        if not fields_to_update:
+            return False
+
+        params.append(assessment_id)
+
+        try:
+            cursor = self.conn.cursor()
+            query = f"UPDATE Assessments SET {', '.join(fields_to_update)} WHERE id = ?"
+            # updated_at será atualizado pelo trigger
+            cursor.execute(query, tuple(params))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao atualizar Assessment ID {assessment_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_assessment(self, assessment_id: int) -> bool:
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM Assessments WHERE id = ?"
+            cursor.execute(query, (assessment_id,))
+            self.conn.commit()
+            # ON DELETE CASCADE should handle related Grades
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir Assessment ID {assessment_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    # --- CRUD para Grade ---
+    def _grade_from_row(self, row: sqlite3.Row) -> Optional[Grade]:
+        if not row:
+            return None
+        return Grade(
+            id=row['id'],
+            assessment_id=row['assessment_id'],
+            student_id=row['student_id'],
+            score=row['score'],
+            observations=row['observations'],
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at'])
+        )
+
+    def add_grade(self, assessment_id: int, student_id: int, score: float, observations: Optional[str] = None) -> Optional[Grade]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "INSERT INTO Grades (assessment_id, student_id, score, observations) VALUES (?, ?, ?, ?)"
+            cursor.execute(query, (assessment_id, student_id, score, observations))
+            self.conn.commit()
+            grade_id = cursor.lastrowid
+            if grade_id:
+                return self.get_grade(grade_id)
+            return None
+        except sqlite3.IntegrityError as e: # Catch UNIQUE constraint violation
+            print(f"Erro de integridade ao adicionar Grade (possivelmente duplicada para assessment_id={assessment_id}, student_id={student_id}): {e}")
+            if self.conn: self.conn.rollback()
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar Grade: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_grade(self, grade_id: int) -> Optional[Grade]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Grades WHERE id = ?"
+            cursor.execute(query, (grade_id,))
+            row = cursor.fetchone()
+            return self._grade_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar Grade por ID: {e}")
+            return None
+
+    def get_grades_by_assessment(self, assessment_id: int) -> List[Grade]:
+        if not self.conn: return []
+        grades: List[Grade] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Grades WHERE assessment_id = ? ORDER BY student_id"
+            cursor.execute(query, (assessment_id,))
+            for row in cursor.fetchall():
+                grade = self._grade_from_row(row)
+                if grade:
+                    grades.append(grade)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar Grades para o Assessment ID {assessment_id}: {e}")
+        return grades
+
+    def get_grades_by_student(self, student_id: int) -> List[Grade]:
+        if not self.conn: return []
+        grades: List[Grade] = []
+        try:
+            cursor = self.conn.cursor()
+            # Join com Assessments para poder ordenar por data da avaliação, se desejado
+            query = """
+                SELECT G.*
+                FROM Grades G
+                JOIN Assessments A ON G.assessment_id = A.id
+                WHERE G.student_id = ?
+                ORDER BY A.date DESC
+            """
+            cursor.execute(query, (student_id,))
+            for row in cursor.fetchall():
+                grade = self._grade_from_row(row)
+                if grade:
+                    grades.append(grade)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar Grades para o Student ID {student_id}: {e}")
+        return grades
+
+    def get_grades_by_assessment_and_student(self, assessment_id: int, student_id: int) -> Optional[Grade]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM Grades WHERE assessment_id = ? AND student_id = ?"
+            cursor.execute(query, (assessment_id, student_id))
+            row = cursor.fetchone()
+            return self._grade_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar Grade por Assessment ID {assessment_id} e Student ID {student_id}: {e}")
+            return None
+
+    def update_grade(self, grade_id: int, score: Optional[float] = None, observations: Optional[str] = None) -> bool:
+        if not self.conn: return False
+
+        fields_to_update = []
+        params = []
+
+        if score is not None:
+            fields_to_update.append("score = ?")
+            params.append(score)
+
+        # Allow observations to be explicitly set to None (empty string in DB often preferred over NULL for text)
+        # or updated.
+        if observations is not None:
+            fields_to_update.append("observations = ?")
+            params.append(observations)
+        elif 'observations' in self.get_grade(grade_id).__dict__ and observations is None : # Special case if want to set it to NULL
+             fields_to_update.append("observations = ?")
+             params.append(None)
+
+
+        if not fields_to_update:
+            return False
+
+        params.append(grade_id)
+
+        try:
+            cursor = self.conn.cursor()
+            query = f"UPDATE Grades SET {', '.join(fields_to_update)} WHERE id = ?"
+            # updated_at será atualizado pelo trigger
+            cursor.execute(query, tuple(params))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao atualizar Grade ID {grade_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_grade(self, grade_id: int) -> bool:
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM Grades WHERE id = ?"
+            cursor.execute(query, (grade_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir Grade ID {grade_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
     def add_sample_data(self):
         """Adiciona dados de exemplo: um evento, uma tarefa e algumas perguntas."""
         if not self.conn:

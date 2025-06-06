@@ -1,6 +1,12 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
+# Define known entity types as constants
+ENTITY_TYPE_PROFESSOR = "professor"
+ENTITY_TYPE_STUDENT = "aluno" # Assuming 'aluno' is used for student
+ENTITY_TYPE_STUDENT_GROUP = "turma"
+# Add other entity types here as needed
+
 class Entity:
     def __init__(self,
                  name: str,
@@ -124,6 +130,65 @@ class QuizAttempt:
 
     def __repr__(self):
         return f"<QuizAttempt(id={self.id}, config_id={self.quiz_config_id}, score={self.score}/{self.total_questions})>"
+
+
+class StudentGroup:
+    def __init__(self,
+                 name: str,
+                 id: Optional[int] = None,
+                 teacher_id: Optional[int] = None, # Refers to an Entity.id with type 'teacher'
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.name = name
+        self.teacher_id = teacher_id
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<StudentGroup(id={self.id}, name='{self.name}', teacher_id={self.teacher_id})>"
+
+
+class Assessment:
+    def __init__(self,
+                 title: str,
+                 student_group_id: int,
+                 max_value: float,
+                 id: Optional[int] = None,
+                 date: Optional[datetime] = None, # Date of the assessment
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.title = title
+        self.date = date
+        self.student_group_id = student_group_id
+        self.max_value = max_value
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<Assessment(id={self.id}, title='{self.title}', group_id={self.student_group_id}, max_value={self.max_value})>"
+
+
+class Grade:
+    def __init__(self,
+                 assessment_id: int,
+                 student_id: int, # Refers to an Entity.id with type 'student'
+                 score: float,
+                 id: Optional[int] = None,
+                 observations: Optional[str] = None,
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.assessment_id = assessment_id
+        self.student_id = student_id
+        self.score = score
+        self.observations = observations
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<Grade(id={self.id}, assessment_id={self.assessment_id}, student_id={self.student_id}, score={self.score})>"
 
 
 if __name__ == '__main__':

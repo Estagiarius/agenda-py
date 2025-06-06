@@ -11,6 +11,7 @@ from typing import Optional, List
 from src.core.database_manager import DatabaseManager
 from src.core.models import Entity
 from src.ui.entity_dialog import EntityDialog # Importar o diálogo
+from src.ui.student_import_dialog import StudentImportDialog
 
 class EntitiesView(QWidget):
     def __init__(self, db_manager: DatabaseManager, parent=None):
@@ -59,6 +60,12 @@ class EntitiesView(QWidget):
 
         # Botões de Ação
         action_buttons_layout = QHBoxLayout()
+
+        self.import_students_button = QPushButton("Importar Alunos via Arquivo")
+        self.import_students_button.setObjectName("importStudentsButton")
+        self.import_students_button.clicked.connect(self._open_student_import_dialog)
+        action_buttons_layout.addWidget(self.import_students_button)
+
         self.add_button = QPushButton("Adicionar Entidade")
         self.add_button.clicked.connect(self._add_entity_dialog)
         action_buttons_layout.addWidget(self.add_button)
@@ -194,6 +201,20 @@ class EntitiesView(QWidget):
                 self._load_entities()
             else:
                 QMessageBox.critical(self, "Erro", "Falha ao excluir a entidade.")
+
+    def _open_student_import_dialog(self):
+        dialog = StudentImportDialog(self) # Pass parent
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # The dialog itself shows a success message for the mock import.
+            # In a real scenario, you'd get data from dialog: e.g., dialog.get_imported_data()
+            # and then process it here.
+            QMessageBox.information(self, "Importação Solicitada",
+                                    "O processo de importação de alunos foi concluído (simulado).\n"
+                                    "Os novos alunos (se realmente importados) devem aparecer na lista.")
+            print(f"Student import dialog accepted. Selected file was: {dialog.get_selected_file_path()}")
+            self._load_entities() # Refresh the table to show new students (if it were a real import)
+        else:
+            print("Student import dialog cancelled.")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

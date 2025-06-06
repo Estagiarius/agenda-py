@@ -1,0 +1,5 @@
+Este é um placeholder para o arquivo modelo Excel (template_alunos.xlsx).
+Em uma implementação real, este seria um arquivo Excel válido com as colunas:
+Nome Completo | Email | Matrícula (Opcional)
+
+Por favor, use o arquivo template_alunos.csv como referência para as colunas.

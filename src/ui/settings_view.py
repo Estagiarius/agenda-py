@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
-    QPushButton, QLabel, QMessageBox, QComboBox 
+    QPushButton, QLabel, QMessageBox, QComboBox, QGroupBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QApplication # Adicionado QApplication
 
 from src.core.database_manager import DatabaseManager
 from src.ui.theme_manager import ThemeManager # Adicionado ThemeManager
+from src.ui.integrations_view import IntegrationsView
 
 class SettingsView(QWidget):
     def __init__(self, db_manager: DatabaseManager, parent=None):
@@ -44,7 +45,18 @@ class SettingsView(QWidget):
         form_layout.addRow("Tema da Aplicação:", self.theme_combo)
 
         main_layout.addLayout(form_layout)
-        main_layout.addStretch() 
+
+        # Separator or GroupBox for Integrations
+        integrations_group = QGroupBox("Integrações e Contas Conectadas")
+        integrations_group_layout = QVBoxLayout()
+
+        self.integrations_view_widget = IntegrationsView(self) # Pass parent
+        integrations_group_layout.addWidget(self.integrations_view_widget)
+        integrations_group.setLayout(integrations_group_layout)
+
+        main_layout.addWidget(integrations_group)
+
+        main_layout.addStretch() # This should be after all content elements and before the save button
 
         # Botão Salvar
         self.save_button = QPushButton("Salvar Configurações")

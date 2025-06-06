@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, date
 from typing import List, Optional, Any, Dict
-from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity # Adicionadas
+from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity, LessonPlan, LessonPlanFile, LessonPlanLink # Adicionadas
 
 class DatabaseManager:
     def __init__(self, db_path='data/agenda.db'):
@@ -193,6 +193,92 @@ class DatabaseManager:
             FOR EACH ROW
             BEGIN
                 UPDATE QuizAttempts SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Tabela lesson_plans
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lesson_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                teacher_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                lesson_date TIMESTAMP,
+                objectives TEXT,
+                program_content TEXT,
+                methodology TEXT,
+                resources_text TEXT,
+                assessment_method TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+
+            # Tabela lesson_plan_files
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lesson_plan_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_plan_id INTEGER NOT NULL,
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lesson_plan_id) REFERENCES lesson_plans(id) ON DELETE CASCADE
+            );
+            """)
+
+            # Tabela lesson_plan_links
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lesson_plan_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_plan_id INTEGER NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lesson_plan_id) REFERENCES lesson_plans(id) ON DELETE CASCADE
+            );
+            """)
+
+            # Tabela lesson_plan_associated_classes (Junction Table)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lesson_plan_associated_classes (
+                lesson_plan_id INTEGER NOT NULL,
+                entity_id INTEGER NOT NULL, -- FK to Entities.id
+                PRIMARY KEY (lesson_plan_id, entity_id),
+                FOREIGN KEY (lesson_plan_id) REFERENCES lesson_plans(id) ON DELETE CASCADE,
+                FOREIGN KEY (entity_id) REFERENCES Entities(id) ON DELETE CASCADE
+            );
+            """)
+
+            # Triggers para updated_at para as novas tabelas
+
+            # Trigger para lesson_plans
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_lesson_plans_updated_at
+            AFTER UPDATE ON lesson_plans
+            FOR EACH ROW
+            BEGIN
+                UPDATE lesson_plans SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Trigger para lesson_plan_files
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_lesson_plan_files_updated_at
+            AFTER UPDATE ON lesson_plan_files
+            FOR EACH ROW
+            BEGIN
+                UPDATE lesson_plan_files SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Trigger para lesson_plan_links
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_lesson_plan_links_updated_at
+            AFTER UPDATE ON lesson_plan_links
+            FOR EACH ROW
+            BEGIN
+                UPDATE lesson_plan_links SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
             END;
             """)
 
@@ -941,6 +1027,452 @@ class DatabaseManager:
             print(f"Erro ao buscar entidades para o Evento ID {event_id}: {e}")
         return linked_entities
 
+    # --- CRUD para LessonPlan ---
+    def add_lesson_plan(self, lesson_plan: LessonPlan) -> Optional[LessonPlan]:
+        if not self.conn: return None
+        try:
+            self.conn.execute('BEGIN') # Start transaction
+            cursor = self.conn.cursor()
+            query = """
+            INSERT INTO lesson_plans (teacher_id, title, lesson_date, objectives, program_content,
+                                      methodology, resources_text, assessment_method, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            # Ensure created_at and updated_at are set if not provided by the model's __init__
+            # (though LessonPlan model doesn't auto-set them like File/Link do)
+            created_at_str = self._datetime_to_str(lesson_plan.created_at if lesson_plan.created_at else datetime.now())
+            updated_at_str = self._datetime_to_str(lesson_plan.updated_at if lesson_plan.updated_at else datetime.now())
+
+            cursor.execute(query, (
+                lesson_plan.teacher_id,
+                lesson_plan.title,
+                self._datetime_to_str(lesson_plan.lesson_date),
+                lesson_plan.objectives,
+                lesson_plan.program_content,
+                lesson_plan.methodology,
+                lesson_plan.resources_text,
+                lesson_plan.assessment_method,
+                created_at_str,
+                updated_at_str
+            ))
+            lesson_plan_id = cursor.lastrowid
+            if not lesson_plan_id:
+                raise sqlite3.Error("Failed to get lastrowid for lesson_plan.")
+
+            lesson_plan.id = lesson_plan_id
+
+            # Link classes
+            if lesson_plan.class_ids:
+                self._link_classes_to_lesson_plan(lesson_plan_id, lesson_plan.class_ids)
+
+            # Add files
+            for file_obj in lesson_plan.files:
+                file_obj.lesson_plan_id = lesson_plan_id
+                if not self.add_lesson_plan_file(file_obj):
+                    raise sqlite3.Error(f"Failed to add lesson plan file: {file_obj.file_name}")
+
+            # Add links
+            for link_obj in lesson_plan.links:
+                link_obj.lesson_plan_id = lesson_plan_id
+                if not self.add_lesson_plan_link(link_obj):
+                    raise sqlite3.Error(f"Failed to add lesson plan link: {link_obj.url}")
+
+            self.conn.commit()
+            return self.get_lesson_plan_by_id(lesson_plan_id) # Fetch the full object
+
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar plano de aula: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_lesson_plan_by_id(self, lesson_plan_id: int, teacher_id: Optional[int] = None) -> Optional[LessonPlan]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            base_query = "SELECT * FROM lesson_plans WHERE id = ?"
+            params: List[Any] = [lesson_plan_id]
+
+            if teacher_id is not None:
+                base_query += " AND teacher_id = ?"
+                params.append(teacher_id)
+
+            cursor.execute(base_query, params)
+            row = cursor.fetchone()
+
+            if row:
+                lesson_plan = self._lesson_plan_from_row(row)
+                if lesson_plan:
+                    lesson_plan.class_ids = self._get_linked_classes_for_lesson_plan(lesson_plan.id)
+                    lesson_plan.files = self.get_files_for_lesson_plan(lesson_plan.id)
+                    lesson_plan.links = self.get_links_for_lesson_plan(lesson_plan.id)
+                    return lesson_plan
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar plano de aula por ID {lesson_plan_id}: {e}")
+            return None
+
+    def get_lesson_plans_by_teacher(
+        self,
+        teacher_id: int,
+        associated_class_id: Optional[int] = None,
+        title_keyword: Optional[str] = None
+    ) -> List[LessonPlan]:
+        if not self.conn: return []
+        lesson_plans: List[LessonPlan] = []
+        try:
+            cursor = self.conn.cursor()
+
+            params: List[Any] = [teacher_id]
+
+            select_clause = "SELECT DISTINCT lp.* FROM lesson_plans lp"
+            joins_clause = ""
+            where_conditions = ["lp.teacher_id = ?"]
+
+            if associated_class_id is not None:
+                joins_clause += " JOIN lesson_plan_associated_classes lpac ON lp.id = lpac.lesson_plan_id"
+                where_conditions.append("lpac.entity_id = ?")
+                params.append(associated_class_id)
+
+            if title_keyword:
+                where_conditions.append("lp.title LIKE ?")
+                params.append(f"%{title_keyword}%")
+
+            query = f"{select_clause}{joins_clause} WHERE {' AND '.join(where_conditions)} ORDER BY lp.lesson_date DESC, lp.updated_at DESC"
+
+            cursor.execute(query, params)
+            for row in cursor.fetchall():
+                lp = self._lesson_plan_from_row(row)
+                if lp:
+                    # For list views, decide if full population is needed.
+                    # For now, fully populate for consistency as per instructions.
+                    lp.class_ids = self._get_linked_classes_for_lesson_plan(lp.id)
+                    lp.files = self.get_files_for_lesson_plan(lp.id) # Could be heavy
+                    lp.links = self.get_links_for_lesson_plan(lp.id) # Could be heavy
+                    lesson_plans.append(lp)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar planos de aula para o professor ID {teacher_id}: {e}")
+        return lesson_plans
+
+    def update_lesson_plan(self, lesson_plan: LessonPlan) -> bool:
+        if not self.conn or lesson_plan.id is None: return False
+        try:
+            self.conn.execute('BEGIN') # Start transaction
+            cursor = self.conn.cursor()
+
+            # Update main lesson_plan record
+            query = """
+            UPDATE lesson_plans
+            SET title = ?, lesson_date = ?, objectives = ?, program_content = ?,
+                methodology = ?, resources_text = ?, assessment_method = ?,
+                teacher_id = ?, updated_at = ?
+            WHERE id = ?
+            """
+            # Add teacher_id to where clause for security if needed, but model has it.
+            # For this example, assuming id is enough if teacher_id is part of the SET.
+            # If teacher_id should NOT be updatable, remove from SET and add to WHERE.
+            # Per model, teacher_id is part of __init__ and not typically changed post-creation.
+            # So, let's assume teacher_id is fixed and use it in WHERE for ownership check.
+
+            # Corrected approach: teacher_id should be for validation, not update
+            query_secure = """
+            UPDATE lesson_plans
+            SET title = ?, lesson_date = ?, objectives = ?, program_content = ?,
+                methodology = ?, resources_text = ?, assessment_method = ?,
+                updated_at = ?
+            WHERE id = ? AND teacher_id = ?
+            """
+            updated_at_str = self._datetime_to_str(datetime.now()) # Always update updated_at
+
+            cursor.execute(query_secure, (
+                lesson_plan.title,
+                self._datetime_to_str(lesson_plan.lesson_date),
+                lesson_plan.objectives,
+                lesson_plan.program_content,
+                lesson_plan.methodology,
+                lesson_plan.resources_text,
+                lesson_plan.assessment_method,
+                updated_at_str,
+                lesson_plan.id,
+                lesson_plan.teacher_id # for WHERE clause
+            ))
+
+            if cursor.rowcount == 0:
+                # Either ID not found or teacher_id mismatch
+                self.conn.rollback()
+                print(f"Falha ao atualizar plano de aula ID {lesson_plan.id}: Não encontrado ou permissão negada.")
+                return False
+
+            # Update linked classes
+            self._link_classes_to_lesson_plan(lesson_plan.id, lesson_plan.class_ids)
+
+            # Update files: delete old, add new
+            self.delete_files_for_lesson_plan(lesson_plan.id)
+            for file_obj in lesson_plan.files:
+                file_obj.lesson_plan_id = lesson_plan.id
+                if not self.add_lesson_plan_file(file_obj):
+                    raise sqlite3.Error(f"Falha ao (re)adicionar arquivo: {file_obj.file_name} para plano ID {lesson_plan.id}")
+
+            # Update links: delete old, add new
+            self.delete_links_for_lesson_plan(lesson_plan.id)
+            for link_obj in lesson_plan.links:
+                link_obj.lesson_plan_id = lesson_plan.id
+                if not self.add_lesson_plan_link(link_obj):
+                    raise sqlite3.Error(f"Falha ao (re)adicionar link: {link_obj.url} para plano ID {lesson_plan.id}")
+
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Erro ao atualizar plano de aula ID {lesson_plan.id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_lesson_plan(self, lesson_plan_id: int, teacher_id: Optional[int] = None) -> bool:
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            # PRAGMA foreign_keys = ON; and ON DELETE CASCADE in table definitions
+            # should handle deletion of related files, links, and associated_classes.
+            base_query = "DELETE FROM lesson_plans WHERE id = ?"
+            params: List[Any] = [lesson_plan_id]
+
+            if teacher_id is not None:
+                base_query += " AND teacher_id = ?"
+                params.append(teacher_id)
+
+            cursor.execute(base_query, params)
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir plano de aula ID {lesson_plan_id}: {e}")
+            if self.conn: self.conn.rollback() # Not strictly necessary for a single DELETE, but good practice
+            return False
+
+    def _link_classes_to_lesson_plan(self, lesson_plan_id: int, class_entity_ids: List[int]):
+        if not self.conn: return
+        try:
+            cursor = self.conn.cursor()
+            # Delete existing associations for this lesson_plan_id
+            cursor.execute("DELETE FROM lesson_plan_associated_classes WHERE lesson_plan_id = ?", (lesson_plan_id,))
+
+            # Insert new associations
+            if class_entity_ids:
+                values_to_insert = [(lesson_plan_id, entity_id) for entity_id in class_entity_ids]
+                cursor.executemany("""
+                    INSERT INTO lesson_plan_associated_classes (lesson_plan_id, entity_id)
+                    VALUES (?, ?)
+                """, values_to_insert)
+            # Commit is handled by the calling function (add/update_lesson_plan)
+        except sqlite3.Error as e:
+            print(f"Erro ao vincular turmas ao plano de aula ID {lesson_plan_id}: {e}")
+            # Rollback is handled by the calling function
+            raise # Re-raise the exception to be caught by the calling transaction handler
+
+    def _get_linked_classes_for_lesson_plan(self, lesson_plan_id: int) -> List[int]:
+        if not self.conn: return []
+        class_ids: List[int] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT entity_id FROM lesson_plan_associated_classes WHERE lesson_plan_id = ?"
+            cursor.execute(query, (lesson_plan_id,))
+            for row in cursor.fetchall():
+                class_ids.append(row['entity_id'])
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar turmas vinculadas para o plano de aula ID {lesson_plan_id}: {e}")
+        return class_ids
+
+    # --- Helper methods for LessonPlanFile and LessonPlanLink ---
+    def _lesson_plan_from_row(self, row: sqlite3.Row) -> Optional[LessonPlan]:
+        """Converts a DB row to a LessonPlan object (without files, links, or class_ids initially)."""
+        if not row:
+            return None
+        return LessonPlan(
+            id=row['id'],
+            title=row['title'],
+            teacher_id=row['teacher_id'],
+            lesson_date=self._datetime_from_str(row['lesson_date']),
+            objectives=row['objectives'],
+            program_content=row['program_content'],
+            methodology=row['methodology'],
+            resources_text=row['resources_text'],
+            assessment_method=row['assessment_method'],
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at']),
+            # files, links, and class_ids will be populated separately
+            files=[],
+            links=[],
+            class_ids=[]
+        )
+
+    def _lesson_plan_file_from_row(self, row: sqlite3.Row) -> Optional[LessonPlanFile]:
+        if not row:
+            return None
+        return LessonPlanFile(
+            id=row['id'],
+            lesson_plan_id=row['lesson_plan_id'],
+            file_name=row['file_name'],
+            file_path=row['file_path'],
+            uploaded_at=self._datetime_from_str(row['uploaded_at'])
+        )
+
+    def _lesson_plan_link_from_row(self, row: sqlite3.Row) -> Optional[LessonPlanLink]:
+        if not row:
+            return None
+        return LessonPlanLink(
+            id=row['id'],
+            lesson_plan_id=row['lesson_plan_id'],
+            url=row['url'],
+            title=row['title'],
+            added_at=self._datetime_from_str(row['added_at'])
+        )
+
+    # --- CRUD para LessonPlanFile ---
+    def add_lesson_plan_file(self, file: LessonPlanFile) -> Optional[LessonPlanFile]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = """
+            INSERT INTO lesson_plan_files (lesson_plan_id, file_name, file_path, uploaded_at)
+            VALUES (?, ?, ?, ?)
+            """
+            # Use file.uploaded_at if available, otherwise let DB default (which is CURRENT_TIMESTAMP)
+            # However, model sets it to datetime.now() if None. So, it should always have a value.
+            uploaded_at_str = self._datetime_to_str(file.uploaded_at)
+
+            cursor.execute(query, (
+                file.lesson_plan_id,
+                file.file_name,
+                file.file_path,
+                uploaded_at_str
+            ))
+            self.conn.commit()
+            file.id = cursor.lastrowid
+            # Re-fetch to get DB-generated uploaded_at and updated_at if they were default
+            # For now, assume uploaded_at from object is fine.
+            if file.id:
+                 # Fetch the row to get actual DB timestamp for uploaded_at
+                get_query = "SELECT * FROM lesson_plan_files WHERE id = ?"
+                cursor.execute(get_query, (file.id,))
+                row = cursor.fetchone()
+                return self._lesson_plan_file_from_row(row)
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar arquivo de plano de aula: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_files_for_lesson_plan(self, lesson_plan_id: int) -> List[LessonPlanFile]:
+        if not self.conn: return []
+        files: List[LessonPlanFile] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM lesson_plan_files WHERE lesson_plan_id = ? ORDER BY uploaded_at DESC"
+            cursor.execute(query, (lesson_plan_id,))
+            for row in cursor.fetchall():
+                file_obj = self._lesson_plan_file_from_row(row)
+                if file_obj:
+                    files.append(file_obj)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar arquivos para o plano de aula ID {lesson_plan_id}: {e}")
+        return files
+
+    def delete_lesson_plan_file(self, file_id: int) -> bool:
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM lesson_plan_files WHERE id = ?"
+            cursor.execute(query, (file_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir arquivo de plano de aula ID {file_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_files_for_lesson_plan(self, lesson_plan_id: int) -> bool:
+        """Deleta todos os arquivos associados a um lesson_plan_id."""
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM lesson_plan_files WHERE lesson_plan_id = ?"
+            cursor.execute(query, (lesson_plan_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir todos os arquivos para o plano de aula ID {lesson_plan_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    # --- CRUD para LessonPlanLink ---
+    def add_lesson_plan_link(self, link: LessonPlanLink) -> Optional[LessonPlanLink]:
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = """
+            INSERT INTO lesson_plan_links (lesson_plan_id, url, title, added_at)
+            VALUES (?, ?, ?, ?)
+            """
+            added_at_str = self._datetime_to_str(link.added_at)
+
+            cursor.execute(query, (
+                link.lesson_plan_id,
+                link.url,
+                link.title,
+                added_at_str
+            ))
+            self.conn.commit()
+            link.id = cursor.lastrowid
+            if link.id:
+                get_query = "SELECT * FROM lesson_plan_links WHERE id = ?"
+                cursor.execute(get_query, (link.id,))
+                row = cursor.fetchone()
+                return self._lesson_plan_link_from_row(row)
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar link de plano de aula: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_links_for_lesson_plan(self, lesson_plan_id: int) -> List[LessonPlanLink]:
+        if not self.conn: return []
+        links: List[LessonPlanLink] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM lesson_plan_links WHERE lesson_plan_id = ? ORDER BY added_at DESC"
+            cursor.execute(query, (lesson_plan_id,))
+            for row in cursor.fetchall():
+                link_obj = self._lesson_plan_link_from_row(row)
+                if link_obj:
+                    links.append(link_obj)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar links para o plano de aula ID {lesson_plan_id}: {e}")
+        return links
+
+    def delete_lesson_plan_link(self, link_id: int) -> bool:
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM lesson_plan_links WHERE id = ?"
+            cursor.execute(query, (link_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir link de plano de aula ID {link_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_links_for_lesson_plan(self, lesson_plan_id: int) -> bool:
+        """Deleta todos os links associados a um lesson_plan_id."""
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM lesson_plan_links WHERE lesson_plan_id = ?"
+            cursor.execute(query, (lesson_plan_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir todos os links para o plano de aula ID {lesson_plan_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
 
     # The duplicated QuizConfig methods that were here are now removed.
     # The correct get_quiz_config_by_id and get_all_quiz_configs have been inserted earlier,

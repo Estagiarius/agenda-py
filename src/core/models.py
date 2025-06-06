@@ -126,6 +126,77 @@ class QuizAttempt:
         return f"<QuizAttempt(id={self.id}, config_id={self.quiz_config_id}, score={self.score}/{self.total_questions})>"
 
 
+class LessonPlanFile:
+    def __init__(self,
+                 lesson_plan_id: int,
+                 file_name: str, # Nome original do arquivo
+                 file_path: str, # Caminho no sistema de arquivos onde o arquivo está armazenado
+                 id: Optional[int] = None,
+                 uploaded_at: Optional[datetime] = None):
+        self.id = id
+        self.lesson_plan_id = lesson_plan_id
+        self.file_name = file_name
+        self.file_path = file_path
+        self.uploaded_at = uploaded_at if uploaded_at is not None else datetime.now()
+
+    def __repr__(self):
+        return f"<LessonPlanFile(id={self.id}, name='{self.file_name}', lesson_plan_id={self.lesson_plan_id})>"
+
+class LessonPlanLink:
+    def __init__(self,
+                 lesson_plan_id: int,
+                 url: str,
+                 id: Optional[int] = None,
+                 title: Optional[str] = None, # Título opcional para o link
+                 added_at: Optional[datetime] = None):
+        self.id = id
+        self.lesson_plan_id = lesson_plan_id
+        self.url = url
+        self.title = title
+        self.added_at = added_at if added_at is not None else datetime.now()
+
+    def __repr__(self):
+        return f"<LessonPlanLink(id={self.id}, url='{self.url}', lesson_plan_id={self.lesson_plan_id})>"
+
+class LessonPlan:
+    def __init__(self,
+                 title: str,
+                 teacher_id: int, # ID do professor que criou o plano
+                 id: Optional[int] = None,
+                 lesson_date: Optional[datetime] = None,
+                 # Turmas associadas: Lista de IDs das turmas.
+                 # A gestão da tabela de associação (M-M) será feita no database_manager.
+                 class_ids: Optional[List[int]] = None,
+                 objectives: Optional[str] = None, # Campo de texto rico
+                 program_content: Optional[str] = None, # Campo de texto rico
+                 methodology: Optional[str] = None, # Campo de texto rico
+                 resources_text: Optional[str] = None, # Campo de texto rico para descrição geral de recursos
+                 assessment_method: Optional[str] = None, # Campo de texto rico
+                 # Arquivos e links serão armazenados em tabelas separadas e ligados pelo lesson_plan_id
+                 # Estes campos podem ser populados após carregar o plano principal.
+                 files: Optional[List[LessonPlanFile]] = None,
+                 links: Optional[List[LessonPlanLink]] = None,
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.title = title
+        self.teacher_id = teacher_id
+        self.lesson_date = lesson_date
+        self.class_ids = class_ids if class_ids is not None else []
+        self.objectives = objectives
+        self.program_content = program_content
+        self.methodology = methodology
+        self.resources_text = resources_text
+        self.assessment_method = assessment_method
+        self.files = files if files is not None else [] # Estes são objetos, não apenas IDs
+        self.links = links if links is not None else [] # Estes são objetos, não apenas IDs
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<LessonPlan(id={self.id}, title='{self.title}', teacher_id={self.teacher_id})>"
+
+
 if __name__ == '__main__':
     # Exemplos de uso (apenas para teste rápido e demonstração)
     

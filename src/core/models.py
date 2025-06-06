@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date # Added date
 from typing import List, Optional, Dict, Any
 
 class Entity:
@@ -114,16 +114,18 @@ class QuizAttempt:
                  score: int,
                  total_questions: int,
                  id: Optional[int] = None,
+                 student_id: Optional[int] = None, # Added student_id
                  attempted_at: Optional[datetime] = None):
         self.id = id
         self.quiz_config_id = quiz_config_id
+        self.student_id = student_id # Added student_id
         self.user_answers = user_answers if user_answers is not None else {}
         self.score = score
         self.total_questions = total_questions
         self.attempted_at = attempted_at if attempted_at is not None else datetime.now()
 
     def __repr__(self):
-        return f"<QuizAttempt(id={self.id}, config_id={self.quiz_config_id}, score={self.score}/{self.total_questions})>"
+        return f"<QuizAttempt(id={self.id}, student_id={self.student_id}, config_id={self.quiz_config_id}, score={self.score}/{self.total_questions})>"
 
 
 if __name__ == '__main__':
@@ -197,3 +199,26 @@ if __name__ == '__main__':
                                 total_questions=2)
     print(quiz_attempt1)
     print(f"  Respostas: {quiz_attempt1.user_answers}")
+
+
+class AttendanceRecord:
+    def __init__(self,
+                 student_id: int,
+                 event_id: int, # Link to the class session/event
+                 date: date, # Date of the session # Changed from datetime.date to date
+                 status: str, # e.g., 'Present', 'Absent', 'Justified Absence', 'Late'
+                 id: Optional[int] = None,
+                 notes: Optional[str] = None,
+                 created_at: Optional[datetime] = None,
+                 updated_at: Optional[datetime] = None):
+        self.id = id
+        self.student_id = student_id
+        self.event_id = event_id
+        self.date = date
+        self.status = status # Consider an Enum or predefined list of statuses
+        self.notes = notes
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def __repr__(self):
+        return f"<AttendanceRecord(id={self.id}, student_id={self.student_id}, event_id={self.event_id}, date='{self.date}', status='{self.status}')>"

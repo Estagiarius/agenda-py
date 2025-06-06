@@ -12,6 +12,7 @@ from src.ui.questions_view import QuestionsView
 from src.ui.quiz_section_widget import QuizSectionWidget
 from src.ui.entities_view import EntitiesView
 from src.ui.settings_view import SettingsView 
+from src.ui.reports_view import ReportsView # Added ReportsView
 from src.core.database_manager import DatabaseManager
 
 class MainWindow(QMainWindow):
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self.add_menu_item("Banco de Perguntas", QuestionsView(self.db_manager))
         self.add_menu_item("Quiz", QuizSectionWidget(self.db_manager))
         self.add_menu_item("Entidades", EntitiesView(self.db_manager))
+        self.add_menu_item("Relatórios", ReportsView(self.db_manager)) # Added ReportsView
         self.add_menu_item("Configurações", SettingsView(self.db_manager)) # Substituído Placeholder
 
         # Conectar sinal do menu para mudar a página no QStackedWidget
@@ -86,7 +88,7 @@ class MainWindow(QMainWindow):
         self.nav_menu.addItem(list_item)
         
         # Se for um QLabel placeholder, centralizar e estilizar
-        is_complex_view = isinstance(page_widget, (AgendaView, TasksView, QuestionsView, QuizSectionWidget, EntitiesView, SettingsView))
+        is_complex_view = isinstance(page_widget, (AgendaView, TasksView, QuestionsView, QuizSectionWidget, EntitiesView, SettingsView, ReportsView)) # Added ReportsView
         if isinstance(page_widget, QLabel) and not is_complex_view:
             page_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
             page_widget.setStyleSheet("font-size: 18px; color: #333;")

@@ -1,9 +1,10 @@
 import sqlite3
 import json
 import os
+import time # Added for testing triggers
 from datetime import datetime, date
 from typing import List, Optional, Any, Dict
-from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity # Adicionadas
+from src.core.models import Event, Task, Question, QuizConfig, QuizAttempt, Entity, AttendanceRecord # Adicionadas
 
 class DatabaseManager:
     def __init__(self, db_path='data/agenda.db'):
@@ -178,12 +179,14 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS QuizAttempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 quiz_config_id INTEGER NOT NULL,
+                student_id INTEGER, -- Added student_id
                 user_answers TEXT NOT NULL, -- JSON Dict[int, str]
                 score INTEGER NOT NULL,
                 total_questions INTEGER NOT NULL,
                 attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Embora possa não ser muito usado
-                FOREIGN KEY (quiz_config_id) REFERENCES QuizConfigs(id) ON DELETE CASCADE
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quiz_config_id) REFERENCES QuizConfigs(id) ON DELETE CASCADE,
+                FOREIGN KEY (student_id) REFERENCES Entities(id) ON DELETE SET NULL -- Or CASCADE
             )
             """)
             # Trigger para QuizAttempts updated_at
@@ -193,6 +196,32 @@ class DatabaseManager:
             FOR EACH ROW
             BEGIN
                 UPDATE QuizAttempts SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
+            """)
+
+            # Tabela AttendanceRecords
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS AttendanceRecords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                event_id INTEGER NOT NULL,
+                date TEXT NOT NULL, -- Store date as TEXT in ISO format (YYYY-MM-DD)
+                status TEXT NOT NULL,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES Entities(id) ON DELETE CASCADE,
+                FOREIGN KEY (event_id) REFERENCES Events(id) ON DELETE CASCADE
+            )
+            """)
+
+            # Trigger para AttendanceRecords updated_at
+            cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_attendance_records_updated_at
+            AFTER UPDATE ON AttendanceRecords
+            FOR EACH ROW
+            BEGIN
+                UPDATE AttendanceRecords SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
             END;
             """)
 
@@ -206,21 +235,25 @@ class DatabaseManager:
         """Converte string ISO 8601 para objeto datetime."""
         if timestamp_str:
             try:
-                # Tenta primeiro com milissegundos, depois sem
+                # Try with microseconds first (most precise)
                 return datetime.fromisoformat(timestamp_str)
             except ValueError:
                 try:
+                    # Try with seconds if microseconds parsing fails
                     return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
                 except ValueError:
-                    # Adicione mais formatos se necessário ou logue um aviso
-                    print(f"Aviso: Formato de data/hora inesperado '{timestamp_str}'")
-                    return None
+                    try:
+                        # Try with milliseconds (common in some systems)
+                        return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        print(f"Aviso: Formato de data/hora inesperado '{timestamp_str}'")
+                        return None
         return None
 
     def _datetime_to_str(self, dt_obj: Optional[datetime]) -> Optional[str]:
         """Converte objeto datetime para string ISO 8601 (formato aceito pelo SQLite)."""
         if dt_obj:
-            return dt_obj.isoformat(sep=' ', timespec='seconds') # YYYY-MM-DD HH:MM:SS
+            return dt_obj.isoformat(sep=' ', timespec='microseconds') # YYYY-MM-DD HH:MM:SS.ffffff
         return None
 
     def get_events_by_date(self, date_obj: date) -> List[Event]:
@@ -950,30 +983,6 @@ class DatabaseManager:
     def _quiz_attempt_from_row(self, row: sqlite3.Row) -> Optional[QuizAttempt]:
         if not row: return None
         user_answers_json = row['user_answers']
-        question_ids_list: List[int] = []
-        try:
-            question_ids_list = json.loads(question_ids_json)
-            if not isinstance(question_ids_list, list) or not all(isinstance(qid, int) for qid in question_ids_list):
-                print(f"Aviso: 'question_ids' para QuizConfig ID {row['id']} não é uma lista de inteiros JSON válida.")
-                question_ids_list = []
-        except json.JSONDecodeError:
-            print(f"Aviso: Falha ao decodificar 'question_ids' JSON para QuizConfig ID {row['id']}.")
-            question_ids_list = []
-        
-        return QuizConfig(
-            id=row['id'],
-            name=row['name'],
-            question_ids=question_ids_list,
-            created_at=self._datetime_from_str(row['created_at'])
-            # updated_at não está no modelo QuizConfig, mas o trigger o atualiza no DB
-        )
-
-    # add_quiz_config, get_quiz_config_by_id, get_all_quiz_configs were moved up
-    # to replace the duplicated _quiz_config_from_row and its associated methods.
-    # This SEARCH block is now targeting the content that was originally after
-    # the second (now deleted) _quiz_config_from_row.
-    # The new content for these methods is already in the REPLACE block above.
-    # This effectively deletes the duplicated methods that were here.
         user_answers_dict: Dict[int, str] = {}
         try:
             # As chaves no JSON são strings, converter para int
@@ -988,6 +997,7 @@ class DatabaseManager:
         return QuizAttempt(
             id=row['id'],
             quiz_config_id=row['quiz_config_id'],
+            student_id=row['student_id'], # Added student_id
             user_answers=user_answers_dict,
             score=row['score'],
             total_questions=row['total_questions'],
@@ -1003,8 +1013,8 @@ class DatabaseManager:
             user_answers_json = json.dumps({str(k): v for k, v in attempt.user_answers.items()})
             
             query = """
-            INSERT INTO QuizAttempts (quiz_config_id, user_answers, score, total_questions, attempted_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO QuizAttempts (quiz_config_id, student_id, user_answers, score, total_questions, attempted_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """
             # Usar o attempted_at do objeto, se fornecido, senão o default do DB (CURRENT_TIMESTAMP)
             # No entanto, o modelo QuizAttempt já define attempted_at no __init__ se não for passado.
@@ -1013,6 +1023,7 @@ class DatabaseManager:
 
             cursor.execute(query, (
                 attempt.quiz_config_id,
+                attempt.student_id, # Added student_id
                 user_answers_json,
                 attempt.score,
                 attempt.total_questions,
@@ -1055,7 +1066,432 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Erro ao buscar tentativas para QuizConfig ID {quiz_config_id}: {e}")
         return attempts
+
+    # --- Student/Class specific methods ---
+
+    def get_classes(self) -> List[Entity]:
+        """
+        Fetches all entities where type is 'turma'.
+        Returns a list of Entity objects.
+        """
+        return self.get_all_entities(entity_type='turma')
+
+    def get_students_by_class(self, class_id: int) -> List[Entity]:
+        """
+        Fetches all entities where type is 'aluno' and
+        their details_json contains a field like '"turma_id": class_id'.
+        Returns a list of Entity objects (students).
+
+        Example for details_json: {"turma_id": 123, "responsible_contact": "parent@example.com"}
+        """
+        if not self.conn: return []
+        students: List[Entity] = []
+        try:
+            cursor = self.conn.cursor()
+            # Using json_extract to query inside the JSON details_json field.
+            # Note: json_extract is available in SQLite 3.38.0+
+            # For older versions, this would require fetching all students and filtering in Python,
+            # or storing turma_id in a separate indexed column.
+            query = """
+            SELECT * FROM Entities
+            WHERE type = 'aluno' AND json_extract(details_json, '$.turma_id') = ?
+            ORDER BY name
+            """
+            cursor.execute(query, (class_id,))
+            for row in cursor.fetchall():
+                entity_obj = self._entity_from_row(row)
+                if entity_obj:
+                    students.append(entity_obj)
+        except sqlite3.Error as e:
+            # If json_extract is not available, sqlite3 might raise an operational error.
+            # Fallback to manual filtering if that's the case (less efficient).
+            if "no such function: json_extract" in str(e).lower():
+                print("SQLite version does not support json_extract. Falling back to manual filtering for get_students_by_class.")
+                all_students = self.get_all_entities(entity_type='aluno')
+                for student in all_students:
+                    if student.details_json and student.details_json.get('turma_id') == class_id:
+                        students.append(student)
+            else:
+                print(f"Erro ao buscar alunos por turma (ID: {class_id}): {e}")
+        return students
+
+    def get_student_grades(self, student_id: int, period_start: Optional[date] = None, period_end: Optional[date] = None) -> List[QuizAttempt]:
+        """
+        Fetches QuizAttempt data for a given student_id.
+        Filters by attempted_at if period_start and period_end dates are provided.
+        Returns a list of QuizAttempt objects.
+        """
+        if not self.conn: return []
+        attempts: List[QuizAttempt] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM QuizAttempts WHERE student_id = ?"
+            params: List[Any] = [student_id]
+
+            if period_start:
+                query += " AND date(attempted_at) >= date(?)" # Compare dates
+                params.append(self._datetime_to_str(datetime.combine(period_start, datetime.min.time())))
+            if period_end:
+                query += " AND date(attempted_at) <= date(?)" # Compare dates
+                params.append(self._datetime_to_str(datetime.combine(period_end, datetime.max.time())))
+
+            query += " ORDER BY attempted_at DESC"
+
+            cursor.execute(query, params)
+            for row in cursor.fetchall():
+                attempt_obj = self._quiz_attempt_from_row(row)
+                if attempt_obj:
+                    attempts.append(attempt_obj)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar notas para o estudante ID {student_id}: {e}")
+        return attempts
+
+    def get_class_performance(self, class_id: int, period_start: Optional[date] = None, period_end: Optional[date] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches grades for all students in a class and aggregates them.
+        The structure of the returned list/dict is:
+        [{'student_id': int, 'student_name': str,
+          'average_score': float, 'total_attempts': int,
+          'attempts_details': List[QuizAttempt]}, ...]
+        """
+        if not self.conn: return []
+
+        students_in_class = self.get_students_by_class(class_id)
+        performance_data: List[Dict[str, Any]] = []
+
+        for student in students_in_class:
+            if student.id is None: continue
+
+            student_grades = self.get_student_grades(student.id, period_start, period_end)
+
+            total_score = 0
+            # Ensure score is not None before summing
+            for attempt in student_grades:
+                if attempt.score is not None:
+                    total_score += attempt.score
+
+            avg_score = total_score / len(student_grades) if student_grades else 0.0
+
+            performance_data.append({
+                'student_id': student.id,
+                'student_name': student.name,
+                'average_score': round(avg_score, 2),
+                'total_attempts': len(student_grades),
+                'attempts_details': student_grades
+            })
+        return performance_data
+
+    # --- Attendance Methods ---
+    def get_student_attendance(self, student_id: int, period_start: Optional[date] = None, period_end: Optional[date] = None) -> List[AttendanceRecord]:
+        """
+        Fetches AttendanceRecord data for a given student_id.
+        This method directly uses get_attendance_records_for_student.
+        Filters by date if period_start and period_end dates are provided.
+        Returns a list of AttendanceRecord objects.
+        """
+        # This method now directly calls the more specific CRUD method.
+        # The placeholder print and complex logic are removed.
+        return self.get_attendance_records_for_student(student_id, period_start, period_end)
+
+    def get_class_attendance_summary(self, class_id: int, period_start: Optional[date] = None, period_end: Optional[date] = None) -> List[Dict[str, Any]]:
+        """
+        Summarizes attendance for a whole class.
+        Return format: [{'student_id': int, 'student_name': str,
+                         'present_count': int, 'absent_count': int,
+                         'justified_count': int, 'late_count': int,
+                         'other_statuses': Dict[str, int]}]
+        """
+        if not self.conn: return []
         
+        students_in_class = self.get_students_by_class(class_id)
+        summary_data: List[Dict[str, Any]] = []
+
+        for student in students_in_class:
+            if student.id is None: continue
+
+            student_attendance_records = self.get_student_attendance(student.id, period_start, period_end)
+
+            status_counts: Dict[str, int] = {
+                'Present': 0,
+                'Absent': 0,
+                'Justified Absence': 0,
+                'Late': 0
+            }
+            other_statuses: Dict[str, int] = {}
+
+            for record in student_attendance_records:
+                if record.status in status_counts:
+                    status_counts[record.status] += 1
+                else:
+                    other_statuses[record.status] = other_statuses.get(record.status, 0) + 1
+
+            summary_data.append({
+                'student_id': student.id,
+                'student_name': student.name,
+                'present_count': status_counts['Present'],
+                'absent_count': status_counts['Absent'],
+                'justified_count': status_counts['Justified Absence'],
+                'late_count': status_counts['Late'],
+                'other_statuses': other_statuses
+            })
+        return summary_data
+
+    # --- Unit Test Placeholders (Updated) ---
+    # General Test Strategies:
+    # 1. Mocking DatabaseManager.conn: Use unittest.mock.patch for self.conn.cursor()
+    #    to control data returned by fetchone() and fetchall().
+    # 2. In-memory SQLite: Initialize DatabaseManager with 'sqlite:///:memory:' for each test
+    #    or test suite. Populate with controlled sample data before each test.
+    #    Helper functions to add sample entities, classes, students, quiz attempts,
+    #    and attendance records will be very useful.
+    #
+    # Test cases for get_student_grades:
+    # - test_get_student_grades_no_attempts: Student ID exists, but no QuizAttempt records. Returns [].
+    # - test_get_student_grades_with_attempts: Student has several attempts. Returns List[QuizAttempt].
+    # - test_get_student_grades_period_filter_none: No period, returns all attempts for student.
+    # - test_get_student_grades_period_filter_start_only: Only period_start, filters correctly.
+    # - test_get_student_grades_period_filter_end_only: Only period_end, filters correctly.
+    # - test_get_student_grades_period_filter_both: Both start and end, filters correctly.
+    # - test_get_student_grades_period_filter_no_match: Period specified, but no attempts in that period. Returns [].
+    # - test_get_student_grades_invalid_student_id: Student ID does not exist. Returns [].
+    #
+    # Test cases for get_class_performance:
+    # - test_get_class_performance_empty_class: class_id valid, but no students in it. Returns [].
+    # - test_get_class_performance_students_no_grades: Students in class, but none have QuizAttempts.
+    #   Each student dict should have 'average_score': 0.0, 'total_attempts': 0, 'attempts_details': [].
+    # - test_get_class_performance_with_grades: Students have various grades. Verify correct aggregation
+    #   (average_score, total_attempts) and that attempts_details contains correct QuizAttempt objects.
+    # - test_get_class_performance_period_filter: Ensure period_start/end are passed to get_student_grades
+    #   and performance data reflects filtered grades.
+    # - test_get_class_performance_mixed_students: Some students with grades, some without.
+    # - test_get_class_performance_invalid_class_id: Class ID does not exist. Returns [].
+    #
+    # Test cases for get_student_attendance (relies on get_attendance_records_for_student):
+    # - test_get_student_attendance_no_records: Student ID exists, no AttendanceRecord. Returns [].
+    # - test_get_student_attendance_with_records: Student has records. Returns List[AttendanceRecord].
+    # - test_get_student_attendance_period_filters: Similar to get_student_grades, test period filtering.
+    # - test_get_student_attendance_invalid_student_id: Returns [].
+    #
+    # Test cases for get_class_attendance_summary:
+    # - test_get_class_attendance_summary_empty_class: Returns [].
+    # - test_get_class_attendance_summary_students_no_records: Students in class, no attendance.
+    #   Each student dict should have 0 for all counts.
+    # - test_get_class_attendance_summary_with_records: Students have various attendance records.
+    #   Verify correct counts for 'present_count', 'absent_count', etc., and 'other_statuses'.
+    # - test_get_class_attendance_summary_period_filter: Ensure period is passed and summary reflects it.
+    # - test_get_class_attendance_summary_invalid_class_id: Returns [].
+    # - test_get_class_attendance_summary_all_status_types: Ensure all known statuses and some 'other'
+    #   statuses are correctly counted and categorized.
+    #
+    # Review of get_classes:
+    # - Seems fine: `return self.get_all_entities(entity_type='turma')` is clear and correct.
+    #
+    # Review of get_students_by_class:
+    # - The json_extract with fallback is a good approach.
+    # - `json_extract(details_json, '$.turma_id') = ?`: This assumes turma_id is a number. If it can
+    #   be stored as a string in JSON (e.g. "turma_id": "123"), this query might fail or not match.
+    #   SQLite's json_extract usually returns a JSON value (string, number, boolean). If turma_id is
+    #   always an int in the DB, then `json_extract(...) = ?` with an int param is fine.
+    #   If turma_id in JSON is a string, then `json_extract(...) = CAST(? AS TEXT)` might be needed,
+    #   or ensure `class_id` param to `execute` is also a string if that's the JSON storage format.
+    #   However, the model `Entity.details_json` is `Dict[str, Any]`, so `turma_id` is likely stored as a Python int,
+    #   which `json.dumps` would convert to a JSON number. So current approach is likely okay.
+    # - The fallback to Python filtering is crucial for robustness.
+
+    # To effectively test the new methods, consider the following:
+    # 1. Mocking DatabaseManager.conn: Use a library like unittest.mock to replace the
+    #    SQLite connection with a mock object. This allows simulating DB responses.
+    # 2. In-memory SQLite: For integration-style tests, configure DatabaseManager
+    #    to use an in-memory SQLite database (':memory:'). Populate it with test data.
+    #
+    # Example test cases for get_classes:
+    # - test_get_classes_empty: No entities of type 'turma'. Should return [].
+    # - test_get_classes_multiple: Multiple 'turma' entities. Should return all.
+    # - test_get_classes_no_turmas: Entities exist, but none are 'turma'. Should return [].
+    #
+    # Example test cases for get_students_by_class:
+    # - test_get_students_for_class_with_students: Class has students. Returns them.
+    # - test_get_students_for_class_no_students: Class exists, but no students assigned. Returns [].
+    # - test_get_students_for_non_existent_class: class_id doesn't exist. Returns [].
+    # - test_get_students_json_details_malformed_or_missing_turma_id: Students exist, but
+    #   their details_json doesn't have 'turma_id' or it's not the queried one. Returns [].
+    # - test_get_students_fallback_if_json_extract_fails (if supporting older SQLite):
+    #   Simulate SQLite error for json_extract and verify fallback logic works.
+    #
+    # For grade/attendance methods, tests would first need the underlying model issues resolved.
+    # Once QuizAttempt has student_id:
+    # - test_get_student_grades_no_attempts: Student has no quiz attempts. Returns [].
+    # - test_get_student_grades_with_attempts: Student has attempts. Returns them.
+    # - test_get_student_grades_period_filter: (Requires period logic) Test filtering.
+    # - test_get_class_performance_empty_class: No students in class. Returns [].
+    # - test_get_class_performance_students_no_grades: Students exist, no grades. Returns summary with 0s.
+    # - test_get_class_performance_with_grades: Students have grades. Verify aggregation.
+
+    # --- CRUD for AttendanceRecord ---
+    def _date_from_str(self, date_str: Optional[str]) -> Optional[date]:
+        """Converte string ISO YYYY-MM-DD para objeto date."""
+        if date_str:
+            try:
+                return date.fromisoformat(date_str)
+            except ValueError:
+                print(f"Aviso: Formato de data inesperado '{date_str}', esperado YYYY-MM-DD.")
+                return None
+        return None
+
+    def _date_to_str(self, date_obj: Optional[date]) -> Optional[str]:
+        """Converte objeto date para string ISO YYYY-MM-DD."""
+        if date_obj:
+            return date_obj.isoformat()
+        return None
+
+    def _attendance_record_from_row(self, row: sqlite3.Row) -> Optional[AttendanceRecord]:
+        """Helper para converter linha do DB para objeto AttendanceRecord."""
+        if not row:
+            return None
+        return AttendanceRecord(
+            id=row['id'],
+            student_id=row['student_id'],
+            event_id=row['event_id'],
+            date=self._date_from_str(row['date']),
+            status=row['status'],
+            notes=row['notes'],
+            created_at=self._datetime_from_str(row['created_at']),
+            updated_at=self._datetime_from_str(row['updated_at'])
+        )
+
+    def add_attendance_record(self, record: AttendanceRecord) -> Optional[AttendanceRecord]:
+        """Adiciona um novo registro de frequência."""
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = """
+            INSERT INTO AttendanceRecords (student_id, event_id, date, status, notes)
+            VALUES (?, ?, ?, ?, ?)
+            """
+            cursor.execute(query, (
+                record.student_id,
+                record.event_id,
+                self._date_to_str(record.date),
+                record.status,
+                record.notes
+            ))
+            self.conn.commit()
+            record.id = cursor.lastrowid
+            if record.id:
+                return self.get_attendance_record_by_id(record.id) # Para obter timestamps
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao adicionar registro de frequência: {e}")
+            if self.conn: self.conn.rollback()
+            return None
+
+    def get_attendance_record_by_id(self, record_id: int) -> Optional[AttendanceRecord]:
+        """Busca um registro de frequência pelo ID."""
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM AttendanceRecords WHERE id = ?"
+            cursor.execute(query, (record_id,))
+            row = cursor.fetchone()
+            return self._attendance_record_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar registro de frequência por ID: {e}")
+            return None
+
+    def get_attendance_for_student_event(self, student_id: int, event_id: int) -> Optional[AttendanceRecord]:
+        """Busca um registro de frequência específico para um aluno e um evento."""
+        if not self.conn: return None
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM AttendanceRecords WHERE student_id = ? AND event_id = ?"
+            cursor.execute(query, (student_id, event_id))
+            row = cursor.fetchone() # Assume um único registro por aluno/evento
+            return self._attendance_record_from_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar frequência para aluno {student_id} e evento {event_id}: {e}")
+            return None
+
+    def get_attendance_records_for_student(self, student_id: int, period_start: Optional[date] = None, period_end: Optional[date] = None) -> List[AttendanceRecord]:
+        """Busca todos os registros de frequência para um aluno, com filtro opcional de período."""
+        if not self.conn: return []
+        records: List[AttendanceRecord] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM AttendanceRecords WHERE student_id = ?"
+            params: List[Any] = [student_id]
+            if period_start:
+                query += " AND date >= ?"
+                params.append(self._date_to_str(period_start))
+            if period_end:
+                query += " AND date <= ?"
+                params.append(self._date_to_str(period_end))
+            query += " ORDER BY date DESC"
+
+            cursor.execute(query, params)
+            for row in cursor.fetchall():
+                record = self._attendance_record_from_row(row)
+                if record:
+                    records.append(record)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar registros de frequência para o aluno ID {student_id}: {e}")
+        return records
+
+    def get_attendance_records_for_event(self, event_id: int) -> List[AttendanceRecord]:
+        """Busca todos os registros de frequência para um evento (aula)."""
+        if not self.conn: return []
+        records: List[AttendanceRecord] = []
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM AttendanceRecords WHERE event_id = ? ORDER BY student_id"
+            cursor.execute(query, (event_id,))
+            for row in cursor.fetchall():
+                record = self._attendance_record_from_row(row)
+                if record:
+                    records.append(record)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar registros de frequência para o evento ID {event_id}: {e}")
+        return records
+
+    def update_attendance_record(self, record: AttendanceRecord) -> bool:
+        """Atualiza um registro de frequência existente."""
+        if not self.conn or record.id is None: return False
+        try:
+            cursor = self.conn.cursor()
+            query = """
+            UPDATE AttendanceRecords
+            SET student_id = ?, event_id = ?, date = ?, status = ?, notes = ?
+            WHERE id = ?
+            """
+            # updated_at será atualizado pelo trigger
+            cursor.execute(query, (
+                record.student_id,
+                record.event_id,
+                self._date_to_str(record.date),
+                record.status,
+                record.notes,
+                record.id
+            ))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao atualizar registro de frequência ID {record.id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
+    def delete_attendance_record(self, record_id: int) -> bool:
+        """Exclui um registro de frequência pelo ID."""
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            query = "DELETE FROM AttendanceRecords WHERE id = ?"
+            cursor.execute(query, (record_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Erro ao excluir registro de frequência ID {record_id}: {e}")
+            if self.conn: self.conn.rollback()
+            return False
+
     def add_sample_data(self):
         """Adiciona dados de exemplo: um evento, uma tarefa e algumas perguntas."""
         if not self.conn:
@@ -1199,9 +1635,11 @@ if __name__ == '__main__':
             print("\nTestando update_event...")
             retrieved_event.title = "Evento de Teste CRUD (Atualizado)"
             retrieved_event.description = "Descrição atualizada."
-            # Simular uma pequena mudança no tempo para testar a atualização do timestamp
-            # Pode ser necessário um sleep pequeno se a resolução do CURRENT_TIMESTAMP for baixa
-            # import time; time.sleep(1) 
+
+            # Wait for a second to ensure timestamp difference for testing trigger
+            print("Waiting 1 second to ensure timestamp difference for updated_at trigger test...")
+            time.sleep(1)
+
             if db_manager.update_event(retrieved_event):
                 print(f"Evento ID={event_id_to_test} atualizado com sucesso.")
                 updated_event = db_manager.get_event_by_id(event_id_to_test)
@@ -1245,6 +1683,14 @@ if __name__ == '__main__':
         assert db_manager.set_setting("test_user_name", "new_test_user") == True
         assert db_manager.get_setting("test_user_name") == "new_test_user"
         print("Setting 'test_user_name' atualizado e recuperado.")
+
+        # Add school_name setting if not already present
+        if db_manager.get_setting("school_name") is None:
+            db_manager.set_setting("school_name", "Escola Exemplo Prof. Jules")
+            print("Setting 'school_name' adicionado: Escola Exemplo Prof. Jules")
+        else:
+            print(f"Setting 'school_name' já existe: {db_manager.get_setting('school_name')}")
+
 
         # ... (restantes dos testes de CRUD para Task, Question, QuizConfig, QuizAttempt, Entity, etc. podem seguir) ...
             

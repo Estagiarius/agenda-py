@@ -211,6 +211,7 @@ class EventDialog(QDialog):
         )
 
     def validate_and_accept(self):
+        print("[EventDialog] validate_and_accept called")
         """Valida os dados, reconstrói o mapa de entidades selecionadas e aceita o diálogo."""
         # Clear and rebuild selected_entity_map based on checkbox states
         self.selected_entity_map.clear()
@@ -223,16 +224,21 @@ class EventDialog(QDialog):
                     if entity_id is not None:
                         # Default role, pode ser expandido no futuro para permitir seleção de roles
                         self.selected_entity_map[entity_id] = "Participante"
+        print(f"[EventDialog] selected_entity_map: {self.selected_entity_map}")
 
         event_data = self.get_event_data() # Retorna um objeto Event ou None
+        print(f"[EventDialog] event_data from get_event_data: {event_data}")
 
         if event_data:
             # Estrutura self.event_data_to_save como (Event, Dict[int, str])
             self.event_data_to_save = (event_data, self.selected_entity_map)
+            print(f"[EventDialog] self.event_data_to_save: {self.event_data_to_save}")
             self.accept() # Fecha o diálogo com QDialog.Accepted
+            print("[EventDialog] self.accept() called")
         else:
             # get_event_data já mostrou um QMessageBox de aviso.
             # self.event_data_to_save não é definido, e o diálogo permanece aberto.
+            print("[EventDialog] event_data was None, dialog not accepted")
             pass
 
 # Bloco para teste independente do EventDialog

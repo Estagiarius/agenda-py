@@ -1,8 +1,8 @@
 import sys
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QLineEdit, QTextEdit, 
+    QDialog, QVBoxLayout, QFormLayout, QLineEdit, QTextEdit,
     QComboBox, QDateEdit, QPushButton, QDialogButtonBox, QMessageBox,
-    QCheckBox
+    QCheckBox, QApplication
 )
 from PyQt6.QtCore import Qt, QDate, QDateTime
 from typing import Optional

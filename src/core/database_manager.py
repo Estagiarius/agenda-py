@@ -947,7 +947,7 @@ class DatabaseManager:
     # after the first (and correct) add_quiz_config method.
 
     # --- CRUD para QuizAttempt ---
-    def _quiz_attempt_from_row(self, row: sqlite3.Row) -> Optional[QuizAttempt]:
+    def _quiz_attempt_from_row(self, row: sqlite3.Row, question_ids_json=None) -> QuizConfig | None:
         if not row: return None
         user_answers_json = row['user_answers']
         question_ids_list: List[int] = []

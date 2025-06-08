@@ -1,8 +1,10 @@
 import sys
+from datetime import datetime
+
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QLineEdit, QTextEdit, 
+    QDialog, QVBoxLayout, QFormLayout, QLineEdit, QTextEdit,
     QComboBox, QPushButton, QDialogButtonBox, QMessageBox, QHBoxLayout,
-    QWidget, QLabel
+    QWidget, QLabel, QApplication
 )
 from PyQt6.QtCore import Qt
 from typing import Optional, List

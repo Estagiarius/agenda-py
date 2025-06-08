@@ -262,7 +262,7 @@ if __name__ == '__main__':
     # Teste para adicionar novo evento
     # É necessário passar o db_manager para o construtor
     dialog_add = EventDialog(db_manager=mock_db)
-    if dialog_add.exec() == QDialog.Accepted: # Usar QDialog.Accepted
+    if dialog_add.exec() == QDialog.accepted: # Usar QDialog.Accepted
         event_tuple = dialog_add.event_data_to_save
         if event_tuple:
             new_event, selected_entities = event_tuple

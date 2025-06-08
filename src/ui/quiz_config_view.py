@@ -1,9 +1,9 @@
 import sys
 import json
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, 
-    QPushButton, QListWidget, QListWidgetItem, QLabel, QLineEdit, 
-    QMessageBox, QHeaderView, QAbstractItemView, QSplitter
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QPushButton, QListWidget, QListWidgetItem, QLabel, QLineEdit,
+    QMessageBox, QHeaderView, QAbstractItemView, QSplitter, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal # Adicionado pyqtSignal
 from PyQt6.QtGui import QFont

@@ -1,17 +1,17 @@
 import sys
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QCalendarWidget, QListWidget, 
-    QListWidgetItem, QTextEdit, QLabel, QSplitter, QPushButton, QMessageBox,
-    QSpacerItem, QSizePolicy, QScrollArea, QFormLayout, QDialog # Adicionado QScrollArea, QFormLayout and QDialog
-)
+from typing import Optional  # Adicionado Dict
+
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
-from datetime import date, datetime
-from typing import Optional, Dict # Adicionado Dict
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QCalendarWidget, QListWidget,
+    QListWidgetItem, QLabel, QSplitter, QPushButton, QMessageBox,
+    QScrollArea, QFormLayout, QDialog  # Adicionado QScrollArea, QFormLayout and QDialog
+)
 
 from src.core.database_manager import DatabaseManager
-from src.core.models import Event 
 from src.ui.event_dialog import EventDialog
+
 
 class AgendaView(QWidget):
     def __init__(self, db_manager: DatabaseManager, parent=None):
@@ -250,7 +250,7 @@ class AgendaView(QWidget):
     def _add_event_dialog(self):
         # Passar db_manager para o EventDialog
         dialog = EventDialog(db_manager=self.db_manager, parent=self)
-        if dialog.exec() == QDialog.Accepted: # Changed to QDialog.Accepted
+        if dialog.exec() == QDialog.accepted: # Changed to QDialog.Accepted
             # Acessar os dados salvos no diálogo
             event_data, selected_entities_map = dialog.event_data_to_save 
             
@@ -282,7 +282,8 @@ class AgendaView(QWidget):
 
         # Passar db_manager para o EventDialog
         dialog = EventDialog(db_manager=self.db_manager, event=event_to_edit, parent=self)
-        if dialog.exec() == QDialog.Accepted: # Changed to QDialog.Accepted
+        if dialog.exec() == QDialog.accepted: # Changed to QDialog.Accepted
+            
             event_data, selected_entities_map = dialog.event_data_to_save
             
             if event_data and event_data.id is not None: 
@@ -329,6 +330,9 @@ class AgendaView(QWidget):
             else:
                 QMessageBox.critical(self, "Erro", "Falha ao excluir o evento no banco de dados.")
 
+    def _load_tasks(self):
+        pass
+
 
 # Bloco para teste independente da AgendaView (opcional)
 if __name__ == '__main__':
@@ -355,7 +359,6 @@ if __name__ == '__main__':
         # Se o database_manager.py não foi executado separadamente, chame explicitamente:
         # db_manager_instance.add_sample_event() # Comentado pois o __main__ do DBManager já faz isso
         pass
-
 
     agenda_widget = AgendaView(db_manager_instance)
     

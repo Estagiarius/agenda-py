@@ -297,6 +297,7 @@ class DatabaseManager:
         return None
 
     def add_event(self, event: Event) -> Optional[Event]:
+        print(f"[DBManager] add_event called with event: {event.__dict__}")
         """Adiciona um novo evento ao banco de dados."""
         if not self.conn:
             print("Conexão com o banco de dados não estabelecida.")
@@ -308,7 +309,8 @@ class DatabaseManager:
             INSERT INTO Events (title, description, start_time, end_time, event_type, location, recurrence_rule)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """
-            cursor.execute(query, (
+            print(f"[DBManager] add_event: Executing query: {query}")
+            params = (
                 event.title,
                 event.description,
                 self._datetime_to_str(event.start_time),
@@ -316,19 +318,22 @@ class DatabaseManager:
                 event.event_type,
                 event.location,
                 event.recurrence_rule
-            ))
+            )
+            print(f"[DBManager] add_event: With params: {params}")
+            cursor.execute(query, params)
             self.conn.commit()
             event.id = cursor.lastrowid
+            print(f"[DBManager] add_event: Event ID after insert: {event.id}")
             
-            # Para obter created_at e updated_at, precisaríamos de uma nova query
-            # ou confiar que o objeto Event já os tem (se aplicável) ou são None
-            # Por simplicidade, vamos buscar o evento recém-criado para ter todos os campos.
             if event.id is not None:
-                return self.get_event_by_id(event.id)
-            return None # Algo deu errado se não houver lastrowid
+                retrieved_event = self.get_event_by_id(event.id) # Fetch to get all fields
+                print(f"[DBManager] add_event: Returning event: {retrieved_event.__dict__ if retrieved_event else None}")
+                return retrieved_event
+            print("[DBManager] add_event: event.id was None after insert.")
+            return None
             
         except sqlite3.Error as e:
-            print(f"Erro ao adicionar evento: {e}")
+            print(f"[DBManager] add_event: SQLite error: {e}") # Log the error
             if self.conn:
                 self.conn.rollback()
             return None
@@ -891,6 +896,7 @@ class DatabaseManager:
 
     # --- Associações Event-Entity ---
     def link_entity_to_event(self, event_id: int, entity_id: int, role: str) -> bool:
+        print(f"[DBManager] link_entity_to_event called with event_id={event_id}, entity_id={entity_id}, role='{role}'")
         if not self.conn: return False
         try:
             cursor = self.conn.cursor()
@@ -898,11 +904,16 @@ class DatabaseManager:
             # ou INSERT OR REPLACE se quisermos atualizar o papel se o link existir.
             # Por simplicidade, INSERT OR IGNORE. Se precisar atualizar o papel, uma lógica de UPDATE seria melhor.
             query = "INSERT OR IGNORE INTO Event_Entities (event_id, entity_id, role) VALUES (?, ?, ?)"
-            cursor.execute(query, (event_id, entity_id, role))
+            print(f"[DBManager] link_entity_to_event: Executing query: {query}")
+            params = (event_id, entity_id, role)
+            print(f"[DBManager] link_entity_to_event: With params: {params}")
+            cursor.execute(query, params)
             self.conn.commit()
-            return cursor.rowcount > 0 # Retorna True se uma nova linha foi inserida
+            row_count = cursor.rowcount
+            print(f"[DBManager] link_entity_to_event: Row count after insert/ignore: {row_count}")
+            return row_count > 0
         except sqlite3.Error as e:
-            print(f"Erro ao vincular Entity {entity_id} ao Event {event_id} com role {role}: {e}")
+            print(f"[DBManager] link_entity_to_event: SQLite error: {e}") # Log the error
             if self.conn: self.conn.rollback()
             return False
 

@@ -248,17 +248,25 @@ class AgendaView(QWidget):
 
 
     def _add_event_dialog(self):
+        print("[AgendaView] _add_event_dialog called")
         # Passar db_manager para o EventDialog
         dialog = EventDialog(db_manager=self.db_manager, parent=self)
         if dialog.exec() == QDialog.accepted: # Changed to QDialog.Accepted
+            print("[AgendaView] EventDialog accepted")
             # Acessar os dados salvos no diálogo
-            event_data, selected_entities_map = dialog.event_data_to_save 
+            event_data, selected_entities_map = dialog.event_data_to_save
+            print(f"[AgendaView] Received event_data: {event_data}")
+            print(f"[AgendaView] Received selected_entities_map: {selected_entities_map}")
             
             if event_data:
+                print(f"[AgendaView] Calling db_manager.add_event with: {event_data}")
                 new_event = self.db_manager.add_event(event_data)
+                print(f"[AgendaView] Result from add_event: {new_event}")
                 if new_event and new_event.id:
+                    print(f"[AgendaView] Event added successfully (ID: {new_event.id}). Linking entities...")
                     # Salvar associações
                     for entity_id, role in selected_entities_map.items():
+                        print(f"[AgendaView] Calling db_manager.link_entity_to_event for event_id={new_event.id}, entity_id={entity_id}, role={role}")
                         self.db_manager.link_entity_to_event(new_event.id, entity_id, role)
                     
                     QMessageBox.information(self, "Sucesso", f"Evento '{new_event.title}' adicionado com ID: {new_event.id}.")
@@ -267,6 +275,7 @@ class AgendaView(QWidget):
                     self.current_selected_event_id = new_event.id 
                     self._refresh_event_list_for_selected_date() 
                 else:
+                    print(f"[AgendaView] Failed to add event or event ID missing. new_event: {new_event}")
                     QMessageBox.critical(self, "Erro", "Falha ao adicionar o evento no banco de dados.")
     
     def _edit_event_dialog(self):
